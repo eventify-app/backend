@@ -2,9 +2,14 @@ import threading
 
 from django.db import transaction
 from django.contrib.auth import get_user_model
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework.generics import CreateAPIView
-from apps.users.api.serializers import RegisterSerializer
+from apps.users.api.serializers import RegisterSerializer,CustomTokenObtainPairSerializer
 from apps.users.utils import send_verification_email
+from drf_spectacular.utils import extend_schema
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 User = get_user_model()
 
@@ -30,3 +35,9 @@ class RegisterView(CreateAPIView):
         user = serializer.save()
         transaction.on_commit(lambda : _send_verification_async(user))
 
+@extend_schema(tags=["auth"])
+class LoginView(TokenObtainPairView):
+    """
+    API view to handle user login and obtain JWT tokens.
+    """
+    serializer_class = CustomTokenObtainPairSerializer

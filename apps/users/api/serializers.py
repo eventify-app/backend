@@ -77,3 +77,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'groups': list(user.groups.values_list('name', flat=True)),
         }
         return data
+
+class VerifyEmailSerializer(serializers.Serializer):
+    uid = serializers.CharField(required=True)
+    token = serializers.CharField(required=True)
+    
+    def validate(self, attrs):
+        return attrs

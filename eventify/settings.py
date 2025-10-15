@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'apps.users',
     'drf_spectacular',
     'drf_spectacular_sidecar',
+    'apps.events',
 ]
 
 REST_FRAMEWORK = {

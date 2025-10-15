@@ -53,8 +53,8 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Uway API',
-    'DESCRIPTION': 'API documentation for Uway application',
+    'TITLE': 'Eventify API',
+    'DESCRIPTION': 'API documentation for Eventify Application',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }

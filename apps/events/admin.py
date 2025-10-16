@@ -7,6 +7,6 @@ class EventAdmin(admin.ModelAdmin):
     """
     Configuración del admin para el modelo Event
     """
-    lisplay = ('id', 'place', 'start_date', 'start_time', 'end_date', 'end_time', 'id_creator', 'deleted_at')
+    list_display = ('id', 'place', 'start_date', 'start_time', 'end_date', 'end_time', 'id_creator', 'deleted_at')
     list_filter = ('start_date', 'deleted_at')
     

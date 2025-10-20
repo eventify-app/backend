@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from apps.events.models import Event
 from apps.users.models import User
+from django.utils import timezone
+from datetime import datetime, date
 
 
 class EventCreatorSerializer(serializers.ModelSerializer):
@@ -31,6 +33,8 @@ class EventSerializer(serializers.ModelSerializer):
         Custom validation for dates and times.
         
         Validates:
+        - start_date cannot be in the past
+        - If start_date is today, start_time must be in the future
         - end_date cannot be before start_date
         - If same day, end_time must be after start_time
         """
@@ -39,17 +43,35 @@ class EventSerializer(serializers.ModelSerializer):
         start_time = data.get('start_time')
         end_time = data.get('end_time')
         
+        # Get current date and time
+        now = timezone.now()
+        today = now.date()
+        current_time = now.time()
+        
+        # Validate that start_date is not in the past
+        if start_date and start_date < today:
+            raise serializers.ValidationError({
+                'start_date': 'La fecha de inicio no puede ser anterior a hoy.'
+            })
+        
+        # If start_date is today, validate that start_time is in the future
+        if start_date and start_date == today:
+            if start_time and start_time <= current_time:
+                raise serializers.ValidationError({
+                    'start_time': 'La hora de inicio debe ser futura cuando el evento es hoy.'
+                })
+        
         # Validate that end_date is not before start_date
         if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({
-                'end_date': 'End date cannot be before start date.'
+                'end_date': 'La fecha de fin no puede ser anterior a la fecha de inicio.'
             })
         
         # If same day, validate that end_time > start_time
         if start_date and end_date and start_date == end_date:
             if start_time and end_time and end_time <= start_time:
                 raise serializers.ValidationError({
-                    'end_time': 'End time must be after start time when the event is on the same day.'
+                    'end_time': 'La hora de fin debe ser posterior a la hora de inicio cuando el evento es en el mismo día.'
                 })
         
         return data

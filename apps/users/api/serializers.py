@@ -15,7 +15,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True, allow_blank=False)
     last_name = serializers.CharField(required=True, allow_blank=False)
     username = serializers.CharField(required=True, allow_blank=False, validators=[UniqueValidator(queryset=User.objects.all(), message="Este nombre de usuario ya está en uso.")])
-    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True, validators=[UniqueValidator(queryset=User.objects.all(), message="Este número de teléfono ya está en uso.")])
 
     class Meta:
         model = User
@@ -77,3 +77,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'groups': list(user.groups.values_list('name', flat=True)),
         }
         return data
+
+class VerifyEmailSerializer(serializers.Serializer):
+    uid = serializers.CharField(required=True)
+    token = serializers.CharField(required=True)
+    
+    def validate(self, attrs):
+        return attrs

@@ -1,3 +1,4 @@
+from django.core.exceptions import PermissionDenied
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
@@ -26,6 +27,12 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         Soft delete: marks event as deleted instead of removing from DB.
         """
+        user = self.request.user
+        is_admin = user.groups.filter(name='Administrator').exists()
+        is_creator = (user.id == instance.id_creator.id)
+        if not (is_creator or is_admin):
+            raise PermissionDenied("No tiene permiso para eliminar este evento.")
+
         instance.deleted_at = timezone.now()
         instance.deleted_by = self.request.user
         instance.save()

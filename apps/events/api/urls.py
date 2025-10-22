@@ -1,7 +1,9 @@
 from django.urls import path, include
 from apps.events.api.views import EventViewSet
+from rest_framework.routers import DefaultRouter
 
-urlpatterns = [
-    path('events/', EventViewSet.as_view({'get': 'list', 'post': 'create'}), name='event-list'),
-    path('events/<int:pk>/', EventViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='event-detail'),
-]
+
+router = DefaultRouter()
+router.register(r"events", EventViewSet, basename='events')
+
+urlpatterns = router.urls

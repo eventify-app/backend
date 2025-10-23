@@ -1,4 +1,5 @@
 from django.core.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
@@ -13,6 +14,7 @@ class EventViewSet(viewsets.ModelViewSet):
     ViewSet for managing events.
     """
     serializer_class = EventSerializer
+    parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):

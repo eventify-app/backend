@@ -27,3 +27,4 @@ services:
 
 volumes:
   eventify_db_data:
+  web_data:

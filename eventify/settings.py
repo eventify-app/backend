@@ -171,3 +171,6 @@ FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / "media"

@@ -26,6 +26,26 @@ class EventViewSet(viewsets.ModelViewSet):
         query = Event.objects.all().filter(deleted_at__isnull = True)
         return query
     
+    def check_event_permission(self, instance):
+        """
+        Check if user has permission to modify the event.
+        """
+        user = self.request.user
+        is_admin = user.groups.filter(name='Administrator').exists()
+        is_creator = (user.id == instance.id_creator.id)
+        if not (is_creator or is_admin):
+            raise PermissionDenied("No tiene permiso para modificar este evento.")
+        
+    def perform_update(self, serializer):
+        """
+        Update event after checking permissions.
+        Only creator or admin can update.
+        """
+        instance = self.get_object()
+        self.check_event_permission(instance)
+        serializer.save()
+        
+    
     def perform_destroy(self, instance):
         """
         Soft delete: marks event as deleted instead of removing from DB.

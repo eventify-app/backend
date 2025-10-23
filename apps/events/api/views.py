@@ -1,5 +1,6 @@
 from django.core.exceptions import PermissionDenied
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from django.utils import timezone
@@ -36,3 +37,21 @@ class EventViewSet(viewsets.ModelViewSet):
         instance.deleted_at = timezone.now()
         instance.deleted_by = self.request.user
         instance.save()
+
+    @action(detail=False, methods=['get'], url_path='my-events', permission_classes=[IsAuthenticated])
+    def my_events(self, request):
+        """
+        Retrieve events created by the authenticated user.
+        """
+        queryset = (
+            self.get_queryset().filter(id_creator=request.user)
+            .order_by('-start_date', '-start_time')
+        )
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

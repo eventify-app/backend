@@ -9,7 +9,7 @@ from rest_framework.generics import CreateAPIView
 from apps.users.api.serializers import RegisterSerializer,CustomTokenObtainPairSerializer, VerifyEmailSerializer
 from apps.users.utils import send_verification_email
 from drf_spectacular.utils import extend_schema
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenBlacklistView
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -93,3 +93,11 @@ class VerifyEmailView(APIView): # aqui heredo de APIView de drf
                 {"error": "Usuario no encontrado o uid inválido"},
                 status = status.HTTP_400_BAD_REQUEST
             )
+
+class LogoutView(TokenBlacklistView):
+    """
+    Logout view that blacklists the refresh token.
+    
+    POST /api/users/logout/
+    """
+    pass

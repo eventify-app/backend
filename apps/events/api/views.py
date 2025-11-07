@@ -1,13 +1,16 @@
 from django.core.exceptions import PermissionDenied
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework import viewsets, status
+from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from django.utils import timezone
 
+from apps.events.api.filters import EventFilter
 from apps.events.models import Event
 from apps.events.api.serializers import EventSerializer
+
+from django_filters.rest_framework import DjangoFilterBackend
 
 class EventViewSet(viewsets.ModelViewSet):
     """
@@ -16,6 +19,12 @@ class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # Filters
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = EventFilter
+    search_fields = ['title', 'place', 'description']
+    ordering = ['-start_date', '-start_time']
 
     def get_queryset(self):
         """

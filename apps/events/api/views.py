@@ -1,12 +1,16 @@
+from django.core.exceptions import PermissionDenied
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework import viewsets, status
+from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from django.utils import timezone
 
+from apps.events.api.filters import EventFilter
 from apps.events.models import Event
 from apps.events.api.serializers import EventSerializer
+
+from django_filters.rest_framework import DjangoFilterBackend
 
 class EventViewSet(viewsets.ModelViewSet):
     """
@@ -15,6 +19,12 @@ class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # Filters
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = EventFilter
+    search_fields = ['title', 'place', 'description']
+    ordering = ['-start_date', '-start_time']
 
     def get_queryset(self):
         """
@@ -25,10 +35,36 @@ class EventViewSet(viewsets.ModelViewSet):
         query = Event.objects.all().filter(deleted_at__isnull = True)
         return query
     
+    def check_event_permission(self, instance):
+        """
+        Check if user has permission to modify the event.
+        """
+        user = self.request.user
+        is_admin = user.groups.filter(name='Administrator').exists()
+        is_creator = (user.id == instance.id_creator.id)
+        if not (is_creator or is_admin):
+            raise PermissionDenied("No tiene permiso para modificar este evento.")
+        
+    def perform_update(self, serializer):
+        """
+        Update event after checking permissions.
+        Only creator or admin can update.
+        """
+        instance = self.get_object()
+        self.check_event_permission(instance)
+        serializer.save()
+        
+    
     def perform_destroy(self, instance):
         """
         Soft delete: marks event as deleted instead of removing from DB.
         """
+        user = self.request.user
+        is_admin = user.groups.filter(name='Administrator').exists()
+        is_creator = (user.id == instance.id_creator.id)
+        if not (is_creator or is_admin):
+            raise PermissionDenied("No tiene permiso para eliminar este evento.")
+
         instance.deleted_at = timezone.now()
         instance.deleted_by = self.request.user
         instance.save()

@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.events.api.filters import EventFilter
 from apps.events.models import Event
-from apps.events.api.serializers import EventSerializer
+from apps.events.api.serializers import EventSerializer, EventParticipantSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -69,6 +69,7 @@ class EventViewSet(viewsets.ModelViewSet):
         instance.deleted_by = self.request.user
         instance.save()
 
+
     @action(detail=False, methods=['get'], url_path='my-events', permission_classes=[IsAuthenticated])
     def my_events(self, request):
         """
@@ -86,3 +87,15 @@ class EventViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+    @action(detail=True, methods=['get'], url_path='participants', permission_classes=[IsAuthenticated], serializer_class=EventParticipantSerializer)
+    def event_participants(self, request, pk=None):
+        """
+        Retrieve participants of a specific event.
+        """
+        event = self.get_object()
+        participants = event.attendees.all()
+        page = self.paginate_queryset(participants)
+        ser = self.get_serializer(page or participants, many=True)
+        return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)

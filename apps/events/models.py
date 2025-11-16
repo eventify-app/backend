@@ -33,3 +33,15 @@ class StudentEvent(models.Model):
         unique_together = ('event', 'student')
         verbose_name = 'Asistencia de Estudiante a Evento'
         verbose_name_plural = 'Asistencias de Estudiantes a Eventos'
+
+
+class EventRating(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_ratings')
+    event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='ratings')
+
+    score = models.PositiveSmallIntegerField(null=False)
+
+    class Meta:
+        unique_together = ('user', 'event')
+        verbose_name = 'Calificación de Evento'
+        verbose_name_plural = 'Calificaciones de Eventos'

@@ -4,15 +4,19 @@ from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
+from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
 from rest_framework import status
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent
-from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer
+from apps.events.models import Event, StudentEvent, EventRating
+from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
+    EventRatingSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import extend_schema_view, extend_schema
+
 
 class EventViewSet(viewsets.ModelViewSet):
     """
@@ -137,3 +141,63 @@ class EventViewSet(viewsets.ModelViewSet):
 
         return Response({'detail': 'Asistencia registrada correctamente.'}, status=status.HTTP_200_OK)
 
+
+@extend_schema_view(
+    list=extend_schema(tags=["Event Ratings"]),
+    retrieve=extend_schema(tags=["Event Ratings"]),
+    create=extend_schema(tags=["Event Ratings"]),
+    update=extend_schema(tags=["Event Ratings"]),
+    partial_update=extend_schema(tags=["Event Ratings"]),
+    destroy=extend_schema(tags=["Event Ratings"]),
+)
+class EventRatingViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing event ratings.
+    """
+    serializer_class = EventRatingSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        """
+        Get event ratings from database.
+        """
+        return EventRating.objects.all()
+
+    def get_event(self):
+        """
+        Retrieve the event based on event_id from URL kwargs.
+        """
+        event_id = self.kwargs.get('event_id')
+        try:
+            return Event.objects.get(pk=event_id, deleted_at__isnull=True)
+        except Event.DoesNotExist:
+            raise NotFound({'detail': 'Evento no encontrado.'})
+
+    def perform_create(self, serializer):
+        """
+        Create event rating.
+        """
+
+        event = self.get_event()
+        user = self.request.user
+
+        # Check if user attended the event
+        attended = StudentEvent.objects.filter(
+            event=event,
+            student=user,
+            attended=True
+        ).exists()
+
+        if not attended:
+            raise PermissionDenied({'detail': 'Solo los participantes que asistieron al evento pueden calificarlo.'})
+
+        # Check if user has already rated the event
+        scored = EventRating.objects.filter(
+            event=event,
+            user=user
+        ).exists()
+
+        if scored:
+            raise PermissionDenied({'detail': 'Ya ha calificado este evento.'})
+
+        serializer.save(user=user, event=event)

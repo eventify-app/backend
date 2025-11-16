@@ -90,3 +90,9 @@ class EventParticipantSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile_photo']
         read_only_fields = fields
+
+class EventCheckInSerializer(serializers.Serializer):
+    """
+    Serializer for checking in a participant to an event by the creator
+    """
+    participant_id = serializers.IntegerField()

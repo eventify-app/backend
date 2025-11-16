@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.events.models import Event
+from apps.events.models import Event, EventRating
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -91,8 +91,29 @@ class EventParticipantSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile_photo']
         read_only_fields = fields
 
+
 class EventCheckInSerializer(serializers.Serializer):
     """
     Serializer for checking in a participant to an event by the creator
     """
     participant_id = serializers.IntegerField()
+
+
+class EventRatingSerializer(serializers.ModelSerializer):
+    """
+    Serializer for rating an event.
+    """
+    user = EventCreatorSerializer(read_only=True)
+
+    class Meta:
+        model = EventRating
+        fields = ['id', 'user', 'event', 'score']
+        read_only_fields = ['id', 'user', 'event']
+
+    def validate_score(self, value):
+        """
+        Validates that the score is between 1 and 5.
+        """
+        if not 1 <= value <= 5:
+            raise serializers.ValidationError("La calificación debe estar entre 1 y 5.")
+        return value

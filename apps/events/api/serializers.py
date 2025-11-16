@@ -83,3 +83,10 @@ class EventSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         validated_data['id_creator'] = request.user
         return super().create(validated_data)
+
+
+class EventParticipantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
+        read_only_fields = fields

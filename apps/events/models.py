@@ -14,3 +14,22 @@ class Event(models.Model):
     end_date = models.DateField()
     deleted_at = models.DateTimeField(null=True, blank=True)
     id_creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    attendees = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through= "events.StudentEvent",
+        related_name="events_joined",
+        blank=True
+    )
+
+class StudentEvent(models.Model):
+    event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='student_events')
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='student_events')
+
+    enrolled_at = models.DateTimeField(auto_now_add=True)
+    attended = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('event', 'student')
+        verbose_name = 'Asistencia de Estudiante a Evento'
+        verbose_name_plural = 'Asistencias de Estudiantes a Eventos'

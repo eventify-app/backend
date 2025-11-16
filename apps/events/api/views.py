@@ -5,10 +5,12 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from django.utils import timezone
+from django.db import transaction
+from rest_framework import status
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event
-from apps.events.api.serializers import EventSerializer, EventParticipantSerializer
+from apps.events.models import Event, StudentEvent
+from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -99,3 +101,39 @@ class EventViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(participants)
         ser = self.get_serializer(page or participants, many=True)
         return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)
+
+
+    @action(detail=True, methods=['post'], url_path='check-in', permission_classes=[IsAuthenticated], serializer_class=EventCheckInSerializer)
+    def check_in_participant(self, request, pk=None):
+        """
+        Mark the attendance of a participant for the event. Only the event creator can perform this action.
+        """
+        event = self.get_object()
+        self.check_event_permission(event)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        participant_id = serializer.validated_data['participant_id']
+
+        # Use transaction to ensure data integrity
+        with transaction.atomic():
+
+            try:
+                student_event_registry = (
+                    StudentEvent.objects
+                    .select_for_update() # Lock the row for update
+                    .select_related('student')
+                    .get(event=event, student__id = participant_id)
+                )
+
+            except StudentEvent.DoesNotExist:
+                return Response({'detail': 'El participante no está inscrito en este evento.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if student_event_registry.attended:
+                return Response({'detail': 'El participante ya ha sido registrado como asistente.'}, status=status.HTTP_200_OK)
+
+            student_event_registry.attended = True
+            student_event_registry.save()
+
+        return Response({'detail': 'Asistencia registrada correctamente.'}, status=status.HTTP_200_OK)
+

@@ -10,9 +10,9 @@ from django.db import transaction
 from rest_framework import status
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating
+from apps.events.models import Event, StudentEvent, EventRating, EventComment
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
-    EventRatingSerializer, EventCommentSerializer
+    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -141,6 +141,37 @@ class EventViewSet(viewsets.ModelViewSet):
 
         return Response({'detail': 'Asistencia registrada correctamente.'}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='enroll', permission_classes=[IsAuthenticated], serializer_class=StudentEventSerializer)
+    def enroll_in_event(self, request, pk=None):
+        """
+        Enroll the authenticated user in an event.
+        """
+        event = self.get_object()
+        user = request.user
+
+        already_enrolled = StudentEvent.objects.filter(event=event, student=user).exists()
+        if already_enrolled:
+            return Response(
+                {'detail': 'Ya estás inscrito en este evento.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if event.max_capacity is not None:
+            current_attendees = event.attendees.count()
+            if current_attendees >= event.max_capacity:
+                return Response(
+                    {'detail': 'El evento ha alcanzado su capacidad máxima.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        with transaction.atomic():
+            student_event = StudentEvent.objects.create(
+                event=event,
+                student=user
+            )
+        
+        serializer = self.get_serializer(student_event)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 @extend_schema_view(
     list=extend_schema(tags=["Event Ratings"]),

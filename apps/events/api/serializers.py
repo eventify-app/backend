@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment
+from apps.events.models import Event, EventRating, EventComment, StudentEvent
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -25,7 +25,7 @@ class EventSerializer(serializers.ModelSerializer):
 
     class Meta: 
         model = Event
-        fields = ['id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date', 'end_time', 'id_creator', 'deleted_by', 'deleted_at']
+        fields = ['id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date', 'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity']
         read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by']
 
     def validate(self, data):
@@ -126,3 +126,16 @@ class EventCommentSerializer(serializers.ModelSerializer):
         model = EventComment
         fields = ['id', 'event', 'author', 'author_id', 'content', 'created_at']
         read_only_fields = ['id', 'event', 'author', 'author_id', 'created_at']
+
+class StudentEventSerializer(serializers.ModelSerializer):
+    """
+    Serializer for student enrollment in an event.
+    """
+    student = EventParticipantSerializer(read_only=True)
+    event = serializers.PrimaryKeyRelatedField(read_only=True)
+    
+    class Meta:
+        model = StudentEvent
+        fields = ['id', 'event', 'student', 'enrolled_at', 'attended']
+        read_only_fields = ['id', 'event', 'student', 'enrolled_at', 'attended']
+

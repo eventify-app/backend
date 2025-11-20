@@ -14,6 +14,7 @@ class Event(models.Model):
     end_date = models.DateField()
     deleted_at = models.DateTimeField(null=True, blank=True)
     id_creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    max_capacity = models.PositiveIntegerField(null=True, blank=True, help_text="Capacidad máxima de asistentes. Si es null, capacidad ilimitada.")
 
     attendees = models.ManyToManyField(
         settings.AUTH_USER_MODEL,

@@ -45,3 +45,13 @@ class EventRating(models.Model):
         unique_together = ('user', 'event')
         verbose_name = 'Calificación de Evento'
         verbose_name_plural = 'Calificaciones de Eventos'
+
+
+class EventComment(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']

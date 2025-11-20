@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating
+from apps.events.models import Event, EventRating, EventComment
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -117,3 +117,12 @@ class EventRatingSerializer(serializers.ModelSerializer):
         if not 1 <= value <= 5:
             raise serializers.ValidationError("La calificación debe estar entre 1 y 5.")
         return value
+    
+class EventCommentSerializer(serializers.ModelSerializer):
+    author = serializers.StringRelatedField(read_only=True) #mostrar nombre autor
+    author_id = serializers.IntegerField(source='author.id', read_only=True)
+
+    class Meta: 
+        model = EventComment
+        fields = ['id', 'event', 'author', 'author_id', 'content', 'created_at']
+        read_only_fields = ['id', 'event', 'author', 'author_id', 'created_at']

@@ -12,7 +12,7 @@ from rest_framework import status
 from apps.events.api.filters import EventFilter
 from apps.events.models import Event, StudentEvent, EventRating
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
-    EventRatingSerializer
+    EventRatingSerializer, EventCommentSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -201,3 +201,55 @@ class EventRatingViewSet(viewsets.ModelViewSet):
             raise PermissionDenied({'detail': 'Ya ha calificado este evento.'})
 
         serializer.save(user=user, event=event)
+
+
+class EventCommentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing event comments.
+    Supports: List, Create, Update, Delete
+    """
+    serializer_class = EventCommentSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        """
+        Get comments for a specific event.
+        """
+        event_id = self.kwargs.get('event_id')
+        return EventComment.objects.filter(event_id=event_id).select_related('author')
+
+    def get_event(self):
+        """
+        Retrieve the event based on event_id from URL kwargs.
+        """
+        event_id = self.kwargs.get('event_id')
+        try:
+            return Event.objects.get(pk=event_id, deleted_at__isnull=True)
+        except Event.DoesNotExist:
+            raise NotFound({'detail': 'Evento no encontrado.'})
+
+    def perform_create(self, serializer):
+        """
+        Create a comment for the event.
+        Automatically assigns the authenticated user as author.
+        """
+        event = self.get_event()
+        serializer.save(author=self.request.user, event=event)
+
+    def perform_update(self, serializer):
+        """
+        Update a comment. Only the author can update their own comment.
+        TODO: Allow administrators to delete any comment
+        """
+        comment = self.get_object()
+        if comment.author != self.request.user:
+            raise PermissionDenied({'detail': 'Solo puedes editar tus propios comentarios.'})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        """
+        Delete a comment. Only the author can delete their own comment.
+        """
+        if instance.author != self.request.user:
+            raise PermissionDenied({'detail': 'Solo puedes eliminar tus propios comentarios.'})
+        instance.delete()

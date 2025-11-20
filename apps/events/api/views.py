@@ -1,5 +1,5 @@
 from django.core.exceptions import PermissionDenied
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
@@ -10,7 +10,7 @@ from django.db import transaction
 from rest_framework import status
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating
+from apps.events.models import Event, StudentEvent, EventRating, EventComment
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
     EventRatingSerializer, EventCommentSerializer
 
@@ -210,6 +210,7 @@ class EventCommentViewSet(viewsets.ModelViewSet):
     """
     serializer_class = EventCommentSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         """

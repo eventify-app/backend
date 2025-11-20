@@ -1,5 +1,5 @@
 from django.core.exceptions import PermissionDenied
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
@@ -241,6 +241,7 @@ class EventCommentViewSet(viewsets.ModelViewSet):
     """
     serializer_class = EventCommentSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         """

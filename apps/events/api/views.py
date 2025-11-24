@@ -8,6 +8,7 @@ from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
 from rest_framework import status
+from datetime import datetime
 
 from apps.events.api.filters import EventFilter
 from apps.events.models import Event, StudentEvent, EventRating, EventComment
@@ -219,6 +220,55 @@ class EventViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(student_event)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='calendar', permission_classes=[IsAuthenticatedOrReadOnly])
+    def calendar(self, request):
+        """
+        Retrieve upcoming events within a date range.
+        Query params:
+        - from: start date (format: YYYY-MM-DD)
+        - to: end date (format: YYYY-MM-DD)
+        
+        Only returns active (non-deleted) events that haven't ended yet.
+        """
+
+        #obtener parametros de la query
+        from_date = request.query_params.get('from', None)
+        to_date = request.query_params.get('to', None)
+
+        #filtrar eventos proximos 
+        today = timezone.now().date()
+        queryset = self.get_queryset().filter(end_date__gte=today)
+
+        #si se proporciona desde fecha, filtrar eventos desde esa fecha
+        if from_date:
+            try: 
+                from_date_obj = datetime.strptime(from_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(start_date__gte=from_date_obj)
+            except ValueError:
+                return Response(
+                    {'error': 'Formate de fecha inválido para "from". Use el formato YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if to_date:
+            try: 
+                to_date_obj = datetime.strptime(to_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(end_date__lte=to_date_obj)
+            except ValueError:
+                return Response(
+                    {'error': 'Formate de fecha inválido para "to". Use el formato YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        queryset = queryset.order_by('start_date', 'start_time')
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 @extend_schema_view(
     list=extend_schema(tags=["Event Ratings"]),

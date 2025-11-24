@@ -75,6 +75,53 @@ class EventViewSet(viewsets.ModelViewSet):
         instance.deleted_by = self.request.user
         instance.save()
 
+    @action(detail=False, methods=['get'], url_path='my-profile-events', permission_classes=[IsAuthenticated])
+    def my_profile_events(self, request):
+        """
+        Retrieve events created by the user and events the user is enrolled in.
+        Returns: {creados: [], inscritos: []}
+        """
+        user = request.user
+        
+        #mis eventos creados 
+        created_events = (
+            self.get_queryset()
+            .filter(id_creator=user)
+            .order_by('-start_date', '-start_time')
+        )
+        
+        #eventos en los que me he inscrito
+        enrolled_events = (
+            self.get_queryset()
+            .filter(attendees=user)
+            .order_by('-start_date', '-start_time')
+        )
+        
+        # Paginación para eventos creados
+        created_page = self.paginate_queryset(created_events)
+        if created_page is not None:
+            created_serializer = self.get_serializer(created_page, many=True)
+            created_data = created_serializer.data
+        else:
+            created_serializer = self.get_serializer(created_events, many=True)
+            created_data = created_serializer.data
+        
+        # Paginación para eventos inscritos
+        enrolled_page = self.paginate_queryset(enrolled_events)
+        if enrolled_page is not None:
+            enrolled_serializer = self.get_serializer(enrolled_page, many=True)
+            enrolled_data = enrolled_serializer.data
+        else:
+            enrolled_serializer = self.get_serializer(enrolled_events, many=True)
+            enrolled_data = enrolled_serializer.data 
+        
+        # Respuesta en el formato solicitado
+        response_data = {
+            'creados': created_data,
+            'inscritos': enrolled_data
+        }
+        
+        return Response(response_data)
 
     @action(detail=False, methods=['get'], url_path='my-events', permission_classes=[IsAuthenticated])
     def my_events(self, request):

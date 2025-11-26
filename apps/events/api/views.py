@@ -1,4 +1,6 @@
 from django.core.exceptions import PermissionDenied
+from django.db.models.expressions import Exists, Value
+from django.db.models.fields import BooleanField
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
@@ -7,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Count, OuterRef
 from rest_framework import status
 from datetime import datetime
 
@@ -39,8 +42,23 @@ class EventViewSet(viewsets.ModelViewSet):
         Filters out soft-deleted events by default.
         """
         
-        query = Event.objects.all().filter(deleted_at__isnull = True)
-        return query
+        queryset = Event.objects.all().filter(deleted_at__isnull = True)
+
+        # Annotate with participants_count for each event
+        queryset = queryset.annotate(
+            participants_count= Count("student_events", distinct=True)
+        )
+
+        # Annotate with is_enrolled if user is authenticated
+        if self.request.user.is_authenticated:
+            subquery = StudentEvent.objects.filter(
+                event=OuterRef("pk"), student = self.request.user
+            )
+            queryset = queryset.annotate(is_enrolled= Exists(subquery))
+        else:
+            queryset = queryset.annotate(is_enrolled= Value(False, output_field= BooleanField()))
+
+        return queryset
     
     def check_event_permission(self, instance):
         """

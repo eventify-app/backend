@@ -23,10 +23,16 @@ class EventSerializer(serializers.ModelSerializer):
     id_creator = EventCreatorSerializer(read_only=True)
     deleted_by = EventCreatorSerializer(read_only=True)
 
+    participants_count = serializers.IntegerField(read_only=True)
+    is_enrolled = serializers.BooleanField(read_only=True)
+
     class Meta: 
         model = Event
-        fields = ['id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date', 'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity']
-        read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by']
+        fields = [
+            'id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date',
+            'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity', 'participants_count', 'is_enrolled'
+        ]
+        read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by', 'participants_count', 'is_enrolled']
 
     def validate(self, data):
         """

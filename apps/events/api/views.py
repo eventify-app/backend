@@ -9,14 +9,14 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Count, OuterRef
+from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper
 from rest_framework import status
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating, EventComment
+from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
-    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer
+    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -289,6 +289,151 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='my-stats', permission_classes=[IsAuthenticated])
+    def my_event_stats(self, request):
+        """
+        Retrieve the total number of events, events last month and events list last month.
+        """
+        user = request.user
+        one_month_ago = timezone.now() - timedelta(days=30)
+        my_events = Event.objects.filter(id_creator=user, deleted_at__isnull=True)
+        total_events = my_events.count()
+
+        events_last_month = my_events.filter(
+            start_date__gte=one_month_ago.date()).annotate(
+                participants_count= Count("student_events", distinct=True)).annotate(
+                    is_enrolled=Value(False, output_field=BooleanField()))
+        
+        events_last_month_count = events_last_month.count()
+
+        data = {
+            'total_events': total_events,
+            'events_last_month': events_last_month_count,
+            'events_list_last_month': events_last_month
+        }
+
+        serializer = EventStatsSerializer(data)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='my-attendee-stats', permission_classes=[IsAuthenticated])
+    def my_attendee_stats(self, request):
+        """
+        Retrieve the total number of attendees, attendees last month.
+        """
+        user = request.user
+        one_month_ago = timezone.now() - timedelta(days=30)
+        my_events = Event.objects.filter(id_creator=user, deleted_at__isnull=True)
+        
+        total_enrolled = StudentEvent.objects.filter(event__in=my_events).count()
+        
+        total_attended = StudentEvent.objects.filter(event__in=my_events, attended=True).count()
+        events_last_month = my_events.filter(start_date__gte=one_month_ago.date())
+        enrolled_last_month = StudentEvent.objects.filter(event__in=events_last_month).count()
+        attended_last_month = StudentEvent.objects.filter(
+            event__in=events_last_month, 
+            attended=True
+        ).count()
+        
+        data = {
+            'total_enrolled': total_enrolled,
+            'total_attended': total_attended,
+            'enrolled_last_month': enrolled_last_month,
+            'attended_last_month': attended_last_month
+        }
+        
+        serializer = AttendeeStatsSerializer(data)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='my-popular-events', permission_classes=[IsAuthenticated])
+    def my_popular_events(self, request):
+        """
+        Retrieve the 5 most popular events of the user.
+        """
+        user = request.user
+        my_events = Event.objects.filter(
+            id_creator=user, 
+            deleted_at__isnull=True
+        ).annotate(
+            total_participants=Count('student_events', distinct=True),
+            total_attended=Count('student_events', filter=Q(student_events__attended=True), distinct=True),
+            average_rating=Avg('ratings__score'),
+            total_ratings=Count('ratings', distinct=True)
+        ).filter(
+            total_participants__gt=0  # Solo eventos con participantes
+        ).annotate(
+            # Calcular tasa de asistencia
+            attendance_rate=ExpressionWrapper(
+                F('total_attended') * 100.0 / F('total_participants'),
+                output_field=FloatField()
+            )
+        ).order_by(
+            '-total_participants',  # Primero por más participantes
+            '-average_rating',       # Luego por mejor calificación
+            '-attendance_rate'       # Finalmente por tasa de asistencia
+        )[:5]
+
+        popular_events_data = []
+        for event in my_events:
+            event_with_annotations = Event.objects.filter(pk=event.pk).annotate(
+                participants_count=Count('student_events', distinct=True),
+                is_enrolled=Value(False, output_field=BooleanField())
+            ).first()
+            
+            popular_events_data.append({
+                'event': event_with_annotations,
+                'total_participants': event.total_participants,
+                'total_attended': event.total_attended,
+                'attendance_rate': round(event.attendance_rate, 2) if event.attendance_rate else 0,
+                'average_rating': round(event.average_rating, 2) if event.average_rating else 0,
+                'total_ratings': event.total_ratings
+            })
+        
+        serializer = PopularEventSerializer(popular_events_data, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='attendees-by-category', permission_classes=[IsAuthenticated])
+    def attendees_by_category(self, request):
+        """
+        Retrieve the attendees by category of the user.
+        """
+        user = request.user
+        categories = Category.objects.all()
+        stats_by_category = []
+
+        for category in categories:
+            events_in_category = Event.objects.filter(
+                id_creator=user,
+                deleted_at__isnull=True,
+                categories=category
+            )
+            
+            total_events = events_in_category.count()
+            
+            if total_events > 0:
+                total_enrolled = StudentEvent.objects.filter(
+                    event__in=events_in_category
+                ).count()
+                
+                total_attended = StudentEvent.objects.filter(
+                    event__in=events_in_category,
+                    attended=True
+                ).count()
+                
+                attendance_rate = (total_attended / total_enrolled * 100) if total_enrolled > 0 else 0
+                
+                stats_by_category.append({
+                    'category': category,
+                    'total_events': total_events,
+                    'total_enrolled': total_enrolled,
+                    'total_attended': total_attended,
+                    'attendance_rate': round(attendance_rate, 2)
+                })
+
+        serializer = CategoryAttendeeStatsSerializer(stats_by_category, many=True)
+        return Response(serializer.data)
+
+
+
 @extend_schema_view(
     list=extend_schema(tags=["Event Ratings"]),
     retrieve=extend_schema(tags=["Event Ratings"]),
@@ -401,3 +546,21 @@ class EventCommentViewSet(viewsets.ModelViewSet):
         if instance.author != self.request.user:
             raise PermissionDenied({'detail': 'Solo puedes eliminar tus propios comentarios.'})
         instance.delete()
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["Categories"]),
+    retrieve=extend_schema(tags=["Categories"]),
+)
+class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet de solo lectura para categorías de eventos.
+    Las categorías son predefinidas: Deportes, Cultura, Académico, Social, Tecnología, Arte.
+    
+    Solo permite:
+    - list: GET /api/categories/
+    - retrieve: GET /api/categories/{id}/
+    """
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    queryset = Category.objects.all()

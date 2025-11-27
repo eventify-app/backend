@@ -1,8 +1,17 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment, StudentEvent
+from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
+
+class CategorySerializer(serializers.ModelSerializer):
+    """
+    Serializer for Category model.
+    """
+    class Meta:
+        model = Category
+        fields = ['id', 'type']
+        read_only_fields = ['id']
 
 
 class EventCreatorSerializer(serializers.ModelSerializer):
@@ -26,13 +35,23 @@ class EventSerializer(serializers.ModelSerializer):
     participants_count = serializers.IntegerField(read_only=True)
     is_enrolled = serializers.BooleanField(read_only=True)
 
+    categories = CategorySerializer(many=True, read_only=True)
+    categories_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Category.objects.all(), 
+        source='categories',
+        required=True,
+        allow_empty=False
+    )
+
     class Meta: 
         model = Event
         fields = [
             'id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date',
-            'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity', 'participants_count', 'is_enrolled'
+            'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity', 'participants_count', 'is_enrolled',
+            'categories', 'categories_ids'
         ]
-        read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by', 'participants_count', 'is_enrolled']
+        read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by', 'participants_count', 'is_enrolled', 'categories']
 
     def validate(self, data):
         """
@@ -81,6 +100,14 @@ class EventSerializer(serializers.ModelSerializer):
                 })
         
         return data
+
+    def validate_categories_ids(self, value):
+        """ 
+        Validate that almost one category is selected.
+        """
+        if not value or len(value) == 0:
+            raise serializers.ValidationError("Al menos una categoría debe ser seleccionada.")
+        return value
 
     def create(self, validated_data):
         """
@@ -152,4 +179,50 @@ class StudentEventSerializer(serializers.ModelSerializer):
         model = StudentEvent
         fields = ['id', 'event', 'student', 'enrolled_at', 'attended']
         read_only_fields = ['id', 'event', 'student', 'enrolled_at', 'attended']
+
+
+class EventStatsSerializer(serializers.Serializer):
+    """
+    Serializer for general statistics of events of the creator.
+    Total events, events last month.
+    """
+    total_events = serializers.IntegerField()
+    events_last_month = serializers.IntegerField()
+    events_list_last_month = EventSerializer(many=True)
+
+
+class AttendeeStatsSerializer(serializers.Serializer):
+    """
+    Serializer for general statistics of attendees of the creator.
+    Total attendees, attendees last month.
+    """
+    total_enrolled = serializers.IntegerField()
+    total_attended = serializers.IntegerField()
+    enrolled_last_month = serializers.IntegerField()
+    attended_last_month = serializers.IntegerField() 
+
+
+class PopularEventSerializer(serializers.Serializer):
+    """
+    Serializer for popular events of the creator.
+    Top 5 events more popular.
+    """
+    event = EventSerializer()
+    total_participants = serializers.IntegerField()
+    total_attended = serializers.IntegerField()
+    attendance_rate = serializers.FloatField()
+    average_rating = serializers.FloatField()
+    total_ratings = serializers.IntegerField()
+
+
+class CategoryAttendeeStatsSerializer(serializers.Serializer):
+    """
+    Serializer for general statistics of attendees of the creator by category.
+    Attendees by category.
+    """
+    category = CategorySerializer()
+    total_events = serializers.IntegerField()
+    total_enrolled = serializers.IntegerField()
+    total_attended = serializers.IntegerField()
+    attendance_rate = serializers.FloatField()
 

@@ -1,10 +1,11 @@
 from django.urls import path, include
-from apps.events.api.views import EventViewSet, EventRatingViewSet, EventCommentViewSet
+from apps.events.api.views import EventViewSet, EventRatingViewSet, EventCommentViewSet, CategoryViewSet
 from rest_framework.routers import DefaultRouter
 
 
 router = DefaultRouter()
 router.register(r"events", EventViewSet, basename='Events')
+router.register(r"categories", CategoryViewSet, basename='Categories')
 
 urlpatterns = router.urls + [
     path("events/<int:event_id>/ratings/", EventRatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='event-rating-list'),

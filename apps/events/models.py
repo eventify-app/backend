@@ -1,7 +1,23 @@
 from django.db import models
 from django.conf import settings
 
-# Create your models here.
+
+class Category(models.Model):
+    """
+    Model for event categories.
+    Deportes, Cultura, Académico, Social, Tecnología, Arte.
+    """
+    type = models.CharField(max_length=50, unique=True)
+
+    class Meta:
+        verbose_name = 'Categoría'
+        verbose_name_plural = 'Categorías'
+        ordering = ['type']
+        
+    def __str__(self):
+        return self.type
+
+
 class Event(models.Model):
     deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='deleted_events', on_delete=models.SET_NULL)
     title = models.CharField(max_length=120, null=True)
@@ -15,6 +31,13 @@ class Event(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     id_creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     max_capacity = models.PositiveIntegerField(null=True, blank=True, help_text="Capacidad máxima de asistentes. Si es null, capacidad ilimitada.")
+
+    categories = models.ManyToManyField(
+        Category,
+        related_name='events',
+        blank=True,
+        verbose_name='Categorías'
+    )
 
     attendees = models.ManyToManyField(
         settings.AUTH_USER_MODEL,

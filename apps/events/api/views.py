@@ -167,7 +167,8 @@ class EventViewSet(viewsets.ModelViewSet):
         Retrieve participants of a specific event.
         """
         event = self.get_object()
-        participants = event.attendees.all()
+        participants = (StudentEvent.objects.filter(event= event).select_related("student").order_by("student__username"))
+
         page = self.paginate_queryset(participants)
         ser = self.get_serializer(page or participants, many=True)
         return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)

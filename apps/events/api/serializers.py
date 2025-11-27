@@ -92,9 +92,17 @@ class EventSerializer(serializers.ModelSerializer):
 
 
 class EventParticipantSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source='student.id', read_only=True)
+    username = serializers.CharField(source='student.username', read_only=True)
+    email = serializers.EmailField(source='student.email', read_only=True)
+    first_name = serializers.CharField(source='student.first_name', read_only=True)
+    last_name = serializers.CharField(source='student.last_name', read_only=True)
+    profile_photo = serializers.CharField(source='student.profile_photo', read_only=True)
+    attended = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile_photo']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile_photo', 'attended']
         read_only_fields = fields
 
 

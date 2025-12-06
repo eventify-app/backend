@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category
+from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -226,3 +226,31 @@ class CategoryAttendeeStatsSerializer(serializers.Serializer):
     total_attended = serializers.IntegerField()
     attendance_rate = serializers.FloatField()
 
+class CommentReportSerializer(serializers.ModelSerializer):
+    """
+    Serializer for comment reports.
+    """
+    reported_by = EventCreatorSerializer(read_only=True)
+    comment = EventCommentSerializer(read_only=True)
+    comment_id = serializers.PrimaryKeyRelatedField(
+        queryset=EventComment.objects.all(),
+        source='comment',
+        write_only=True
+    )
+
+    class Meta:
+        model = CommentReport
+        fields = ['id', 'comment', 'comment_id', 'reported_by', 'reason', 'created_at']
+        read_only_fields = ['id', 'reported_by', 'created_at', 'comment']
+
+
+class ReportedCommentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for reported comments with aggregated report data.
+    """
+    comment = EventCommentSerializer()
+    report_count = serializers.IntegerField()
+    latest_report_date = serializers.DateTimeField()
+    reports = CommentReportSerializer(many=True)
+
+    

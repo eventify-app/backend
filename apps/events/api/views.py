@@ -16,7 +16,8 @@ from datetime import datetime, timedelta
 from apps.events.api.filters import EventFilter
 from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
-    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer
+    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, \
+    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, ReportedCommentSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -564,3 +565,59 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Category.objects.all()
+
+
+@extend_schema_view(
+    list=extend_schema(tags=['Comment Reports']),
+)
+class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for administrators to view reported comments.
+    Only administrators can access this endpoint.
+    """
+    serializer_class = ReportedCommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Get all comments that have been reported, with report counts.
+        Only accessible by administrators.
+        """
+        user = self.request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden ver los comentarios reportados.")
+        
+        # Get comments that have at least one report
+        reported_comments = EventComment.objects.filter(
+            reports__isnull=False
+        ).annotate(
+            report_count=Count('reports', distinct=True),
+            latest_report_date=Max('reports__created_at')
+        ).distinct().order_by('-latest_report_date')
+        
+        return reported_comments
+
+    def list(self, request, *args, **kwargs):
+        """
+        List all reported comments with their reports.
+        """
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        
+        # Prepare data with reports
+        comments_data = []
+        for comment in (page if page is not None else queryset):
+            reports = CommentReport.objects.filter(comment=comment).select_related('reported_by')
+            comments_data.append({
+                'comment': comment,
+                'report_count': comment.report_count,
+                'latest_report_date': comment.latest_report_date,
+                'reports': reports
+            })
+        
+        serializer = self.get_serializer(comments_data, many=True)
+        
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+

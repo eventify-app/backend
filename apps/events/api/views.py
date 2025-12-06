@@ -525,10 +525,21 @@ class EventCommentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """
         Create a comment for the event.
-        Automatically assigns the authenticated user as author.
+        Only users who attended the event can comment.
         """
         event = self.get_event()
-        serializer.save(author=self.request.user, event=event)
+        user = self.request.user
+
+        attended = StudentEvent.objects.filter(
+            event=event,
+            student=user,
+            attended=True
+        ).exists()
+
+        if not attended:
+            raise PermissionDenied({'detail': 'Solo los participantes que asistieron al evento pueden comentar.'})
+
+        serializer.save(author=user, event=event)
 
     def perform_update(self, serializer):
         """

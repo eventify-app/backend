@@ -9,15 +9,15 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper
+from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper, Max
 from rest_framework import status
 from datetime import datetime, timedelta
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category
+from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
     EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, \
-    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, ReportedCommentSerializer
+    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, ReportedCommentSerializer, ReportCommentSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -548,6 +548,48 @@ class EventCommentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied({'detail': 'Solo puedes eliminar tus propios comentarios.'})
         instance.delete()
 
+    @extend_schema(
+    request=ReportCommentSerializer,
+    responses={
+        200: {'description': 'Comentario reportado correctamente.'},
+        400: {'description': 'Error en la validación o comentario ya reportado.'},
+        404: {'description': 'Comentario no encontrado.'}
+    })
+    @action(detail=True, methods=['post'], url_path='report', permission_classes=[IsAuthenticated])
+    def report_comment(self, request, event_id=None, pk=None):
+        """
+        Report a comment as inappropriate.
+        """
+        try:
+            comment = EventComment.objects.get(pk=pk, event_id=event_id)
+        except EventComment.DoesNotExist:
+            raise NotFound({'detail': 'Comentario no encontrado.'})
+        
+        # Check if user already reported this comment
+        if CommentReport.objects.filter(comment=comment, reported_by=request.user).exists():
+            return Response(
+                {'detail': 'Ya has reportado este comentario.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reason = request.data.get('reason')
+        if not reason:
+            return Response(
+                {'detail': 'Debe proporcionar una razón para el reporte.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        CommentReport.objects.create(
+            comment=comment,
+            reported_by=request.user,
+            reason=reason
+        )
+        
+        return Response(
+            {'detail': 'Comentario reportado correctamente.'},
+            status=status.HTTP_201_CREATED
+        )
+
 
 @extend_schema_view(
     list=extend_schema(tags=["Categories"]),
@@ -583,6 +625,10 @@ class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
         Get all comments that have been reported, with report counts.
         Only accessible by administrators.
         """
+        # Prevent error during schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return EventComment.objects.none()
+
         user = self.request.user
         if not user.groups.filter(name='Administrator').exists():
             raise PermissionDenied("Solo los administradores pueden ver los comentarios reportados.")
@@ -619,5 +665,84 @@ class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
         
         if page is not None:
             return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='disable')
+    def disable_comment(self, request, pk=None):
+        """
+        Disable a reported comment.
+        Only administrators can disable comments.
+        """
+        user = request.user 
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden inhabilitar comentarios.")
+        
+        try:
+            comment = EventComment.objects.get(pk=pk)
+        except EventComment.DoesNotExist:
+            raise NotFound({'detail': 'Comentario no encontrado.'})
+
+        if not comment.is_active:
+            return Response(
+                {'detail': 'El comentario ya está inhabilitado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment.is_active = False
+        comment.disabled_at = timezone.now()
+        comment.disabled_by = user
+        comment.save()
+
+        return Response(
+            {'detail': 'Comentario inhabilitado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore_comment(self, request, pk=None):
+        """
+        Restore a disabled comment.
+        Only administrators can restore comments.
+        """
+        user = request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden restaurar comentarios.")
+
+        try:
+            comment = EventComment.objects.get(pk=pk)
+        except EventComment.DoesNotExist:
+            raise NotFound({'detail': 'Comentario no encontrado.'})
+
+        if comment.is_active:
+            return Response(
+                {'detail': 'El comentario ya está activo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment.is_active = True
+        comment.disabled_at = None
+        comment.disabled_by = None
+        comment.save()
+
+        return Response(
+            {'detail': 'Comentario restaurado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a specific reported comment with its reports.
+        """
+        comment = self.get_object()
+        
+        reports = CommentReport.objects.filter(comment=comment).select_related('reported_by')
+        comment_data = {
+            'comment': comment,
+            'report_count': comment.report_count,
+            'latest_report_date': comment.latest_report_date,
+            'reports': reports
+        }
+        
+        serializer = self.get_serializer(comment_data)
         return Response(serializer.data)
 

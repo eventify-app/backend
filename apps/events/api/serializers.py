@@ -244,7 +244,7 @@ class CommentReportSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'reported_by', 'created_at', 'comment']
 
 
-class ReportedCommentSerializer(serializers.ModelSerializer):
+class ReportedCommentSerializer(serializers.Serializer):
     """
     Serializer for reported comments with aggregated report data.
     """
@@ -253,4 +253,11 @@ class ReportedCommentSerializer(serializers.ModelSerializer):
     latest_report_date = serializers.DateTimeField()
     reports = CommentReportSerializer(many=True)
 
-    
+class ReportCommentSerializer(serializers.Serializer):
+    """
+    Serializer for reporting a comment.
+    """
+    reason = serializers.CharField(
+        help_text="Razón del reporte",
+        required=True
+    )

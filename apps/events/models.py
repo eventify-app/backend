@@ -1,7 +1,23 @@
 from django.db import models
 from django.conf import settings
 
-# Create your models here.
+
+class Category(models.Model):
+    """
+    Model for event categories.
+    Deportes, Cultura, Académico, Social, Tecnología, Arte.
+    """
+    type = models.CharField(max_length=50, unique=True)
+
+    class Meta:
+        verbose_name = 'Categoría'
+        verbose_name_plural = 'Categorías'
+        ordering = ['type']
+        
+    def __str__(self):
+        return self.type
+
+
 class Event(models.Model):
     deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='deleted_events', on_delete=models.SET_NULL)
     title = models.CharField(max_length=120, null=True)
@@ -14,3 +30,52 @@ class Event(models.Model):
     end_date = models.DateField()
     deleted_at = models.DateTimeField(null=True, blank=True)
     id_creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    max_capacity = models.PositiveIntegerField(null=True, blank=True, help_text="Capacidad máxima de asistentes. Si es null, capacidad ilimitada.")
+
+    categories = models.ManyToManyField(
+        Category,
+        related_name='events',
+        blank=True,
+        verbose_name='Categorías'
+    )
+
+    attendees = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through= "events.StudentEvent",
+        related_name="events_joined",
+        blank=True
+    )
+
+class StudentEvent(models.Model):
+    event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='student_events')
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='student_events')
+
+    enrolled_at = models.DateTimeField(auto_now_add=True)
+    attended = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('event', 'student')
+        verbose_name = 'Asistencia de Estudiante a Evento'
+        verbose_name_plural = 'Asistencias de Estudiantes a Eventos'
+
+
+class EventRating(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_ratings')
+    event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='ratings')
+
+    score = models.PositiveSmallIntegerField(null=False)
+
+    class Meta:
+        unique_together = ('user', 'event')
+        verbose_name = 'Calificación de Evento'
+        verbose_name_plural = 'Calificaciones de Eventos'
+
+
+class EventComment(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']

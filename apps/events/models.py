@@ -76,6 +76,35 @@ class EventComment(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True, help_text="Indica si el comentario está activo o inhabilitado")
+    disabled_at = models.DateTimeField(null=True, blank=True)
+    disabled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name='disabled_comments',
+        on_delete=models.SET_NULL
+    )
     
     class Meta:
         ordering = ['-created_at']
+
+
+class CommentReport(models.Model):
+    """
+    Model for comment reports.
+    Allows users to report inappropiate comments.
+    """
+    comment = models.ForeignKey(EventComment, on_delete=models.CASCADE, related_name='reports')
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comment_reports')
+    reason = models.TextField(help_text="Razón del reporte")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('comment', 'reported_by')
+        verbose_name = 'Reporte de Comentario'
+        verbose_name_plural = 'Reportes de Comentarios'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reporte de comentario {self.reported_by.username} sobre el comentario {self.comment.id}"

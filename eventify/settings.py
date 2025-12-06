@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'drf_spectacular_sidecar',
     'apps.events',
+    'apps.analytics',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
 

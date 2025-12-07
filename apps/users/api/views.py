@@ -1,4 +1,7 @@
 import threading
+
+from django.core.files.storage import default_storage
+from rest_framework.parsers import FormParser, MultiPartParser
 from django.utils import timezone
 
 from django.core.mail import send_mail
@@ -11,7 +14,7 @@ from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import IsAuthenticated
 from apps.users.api.serializers import RegisterSerializer, CustomTokenObtainPairSerializer, VerifyEmailSerializer, \
     UserSerializer, EmailChangeRequestOTPSerializer, \
-    EmailChangeVerifyOTPSerializer
+    EmailChangeVerifyOTPSerializer, ProfilePhotoSerializer
 from apps.users.models import EmailChangeOTP
 from apps.users.utils import send_verification_email, generate_otp_code, hash_code, expiry
 from drf_spectacular.utils import extend_schema
@@ -189,6 +192,56 @@ class VerifyEmailView(APIView): # aqui heredo de APIView de drf
                 {"error": "Usuario no encontrado o uid inválido"},
                 status = status.HTTP_400_BAD_REQUEST
             )
+
+@extend_schema(request=ProfilePhotoSerializer)
+class ProfilePhotoView(APIView):
+    """
+    API view to upload, update, or delete the user's profile photo.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @transaction.atomic
+    def post(self, request):
+        """
+        Uploads or updates the user's profile photo.
+        """
+        ser = ProfilePhotoSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = request.user
+
+        old = user.profile_photo
+        new_file = ser.validated_data["profile_photo"]
+
+        user.profile_photo = new_file
+        user.save(update_fields=["profile_photo"])
+
+        if old and old.name and old.name != user.profile_photo.name:
+            try:
+                default_storage.delete(old.name)
+            except Exception:
+                pass
+
+        return Response({
+            "profile_photo": user.profile_photo.url if user.profile_photo else None
+        }, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def delete(self, request):
+        """
+        Deletes the user's profile photo.
+        """
+        user = request.user
+        old = user.profile_photo
+        user.profile_photo = None
+        user.save(update_fields=["profile_photo"])
+        if old and old.name:
+            try:
+                default_storage.delete(old.name)
+            except Exception:
+                pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class LogoutView(TokenBlacklistView):
     """

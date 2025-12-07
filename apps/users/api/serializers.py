@@ -127,3 +127,25 @@ class EmailChangeVerifyOTPSerializer(serializers.Serializer):
     new_email = serializers.EmailField()
     code = serializers.RegexField(r"^\d{6}$", help_text="Código de 6 dígitos")
 
+
+def validate_image(file):
+    """
+    Validates an image file for size and format.
+    """
+    if file.size > 2 * 1024 * 1024:
+        raise serializers.ValidationError("La imagen no puede superar 2 MB.")
+    ct = getattr(file, "content_type", "")
+    if ct not in {"image/jpeg", "image/png", "image/webp"}:
+        raise serializers.ValidationError("Formatos permitidos: JPG, PNG, WEBP.")
+    return file
+
+
+class ProfilePhotoSerializer(serializers.Serializer):
+    """
+    Serializer for uploading a profile photo.
+    """
+    profile_photo = serializers.ImageField(required=True)
+
+    def validate_profile_photo(self, f):
+        return validate_image(f)
+

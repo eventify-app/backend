@@ -13,7 +13,7 @@ class User(AbstractUser):
     phone = models.CharField(max_length=16, validators=[e164_validator], null=True, blank=True, unique=True)
     email_verified = models.BooleanField(default=False)
     date_of_birth = models.DateField(null=True, blank=True)
-    profile_photo = models.CharField(max_length=255, null=True, blank=True)
+    profile_photo = models.ImageField(upload_to="users/avatars/", null=True, blank=True)
     deleted_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='deleted_users')
     deleted_at = models.DateTimeField(null=True, blank=True)
 

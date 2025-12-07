@@ -1,13 +1,19 @@
 import threading
+from django.utils import timezone
 
+from django.core.mail import send_mail
 from django.db import transaction
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.generics import CreateAPIView
-from apps.users.api.serializers import RegisterSerializer,CustomTokenObtainPairSerializer, VerifyEmailSerializer
-from apps.users.utils import send_verification_email
+from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
+from rest_framework.permissions import IsAuthenticated
+from apps.users.api.serializers import RegisterSerializer, CustomTokenObtainPairSerializer, VerifyEmailSerializer, \
+    UserSerializer, EmailChangeRequestOTPSerializer, \
+    EmailChangeVerifyOTPSerializer
+from apps.users.models import EmailChangeOTP
+from apps.users.utils import send_verification_email, generate_otp_code, hash_code, expiry
 from drf_spectacular.utils import extend_schema
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenBlacklistView
 from django.utils.encoding import force_str
@@ -38,12 +44,102 @@ class RegisterView(CreateAPIView):
         user = serializer.save()
         transaction.on_commit(lambda : _send_verification_async(user))
 
+
+class UserView(RetrieveUpdateAPIView):
+    """
+    API view to retrieve and update the authenticated user's details.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
+
+    def get_object(self):
+        return self.request.user
+
+
+@extend_schema(request=EmailChangeRequestOTPSerializer)
+class EmailChangeRequestOTPView(APIView):
+    """
+    API view to request OTP for changing email.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = EmailChangeRequestOTPSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        new_email = ser.validated_data["new_email"]
+        user = request.user
+
+        # cooldown anti-spam
+        last = EmailChangeOTP.objects.filter(user=user, new_email__iexact=new_email).order_by("-created_at").first()
+        if last and (timezone.now() - last.created_at).total_seconds() < 60:
+            return Response({"detail": "Espera un momento antes de solicitar otro código."}, status=429)
+
+        code = generate_otp_code()
+        EmailChangeOTP.objects.create(
+            user=user,
+            new_email=new_email,
+            code_hash=hash_code(code),
+            expires_at=expiry(10),
+        )
+
+        send_mail(
+            "Tu código para cambiar el correo - Eventify",
+            f"Tu código es: {code}\nVence en {10} minutos.",
+            None,
+            [new_email],
+            fail_silently=False,
+        )
+        return Response({"detail": "Código enviado al nuevo correo."}, status=200)
+
+
+@extend_schema(request=EmailChangeVerifyOTPSerializer)
+class EmailChangeVerifyOTPView(APIView):
+    """
+    API view to verify OTP and change user's email.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        ser = EmailChangeVerifyOTPSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        new_email = ser.validated_data["new_email"]
+        code = ser.validated_data["code"]
+        user = request.user
+
+        otp = (EmailChangeOTP.objects
+               .select_for_update()
+               .filter(user=user, new_email__iexact=new_email)
+               .order_by("-created_at").first())
+
+        if not otp:
+            return Response({"detail": "Solicitud no encontrada."}, status=400)
+        if otp.attempts >= 5:
+            return Response({"detail": "Se excedieron los intentos. Solicita un nuevo código."}, status=400)
+        if timezone.now() > otp.expires_at:
+            return Response({"detail": "El código ha expirado. Solicita uno nuevo."}, status=400)
+
+        otp.attempts += 1
+        otp.save(update_fields=["attempts"])
+
+        if otp.code_hash != hash_code(code):
+            return Response({"detail": "Código incorrecto."}, status=400)
+
+        user.email = new_email
+        user.email_verified = True
+        user.save(update_fields=["email", "email_verified"])
+        EmailChangeOTP.objects.filter(user=user, new_email__iexact=new_email).delete()
+
+        return Response({"detail": "Correo actualizado correctamente."}, status=200)
+
+
 @extend_schema(tags=["auth"])
 class LoginView(TokenObtainPairView):
     """
     API view to handle user login and obtain JWT tokens.
     """
     serializer_class = CustomTokenObtainPairSerializer
+
 
 @extend_schema(tags=['auth'])
 class VerifyEmailView(APIView): # aqui heredo de APIView de drf

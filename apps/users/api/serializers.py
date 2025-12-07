@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
@@ -84,3 +86,44 @@ class VerifyEmailSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         return attrs
+
+
+class UserSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        required=False,
+        validators=[UniqueValidator(queryset=User.objects.all(), message="Este nombre de usuario ya está en uso.")]
+    )
+    phone = serializers.CharField(
+        required=False,
+        allow_null=True,
+        validators=[UniqueValidator(queryset=User.objects.all(), message="Este número de teléfono ya está en uso.")]
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            "id", "username", "first_name", "last_name",
+            "date_of_birth", "phone", "profile_photo", "email",
+            "email_verified",
+        ]
+        read_only_fields = ["id", "email", "email_verified", "profile_photo"]
+
+    def validate_date_of_birth(self, dob):
+        if dob and dob >= timezone.localdate():
+            raise serializers.ValidationError("La fecha de nacimiento debe ser en el pasado.")
+        return dob
+
+
+class EmailChangeRequestOTPSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+
+    def validate_new_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Este email ya está en uso.")
+        return value
+
+
+class EmailChangeVerifyOTPSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+    code = serializers.RegexField(r"^\d{6}$", help_text="Código de 6 dígitos")
+

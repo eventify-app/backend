@@ -84,3 +84,38 @@ class VerifyEmailSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         return attrs
+
+class UserStatusSerializer(serializers.ModelSerializer):
+    """
+    Serializer para inhabilitar/habilitar usuarios.
+    Solo permite modificar el campo is_active.
+    """
+    is_active = serializers.BooleanField(required=True)
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'is_active']
+        read_only_fields = ['id', 'username', 'email']
+    
+    def validate(self, attrs):
+        """
+        Validación adicional si es necesario
+        """
+        user = self.instance
+        
+        # Prevenir que un admin se deshabilite a sí mismo
+        request_user = self.context.get('request').user
+        if user.id == request_user.id and not attrs.get('is_active', True):
+            raise serializers.ValidationError(
+                "No puedes deshabilitarte a ti mismo."
+            )
+        
+        return attrs
+    
+    def update(self, instance, validated_data):
+        """
+        Actualiza el estado del usuario
+        """
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.save(update_fields=['is_active'])
+        return instance

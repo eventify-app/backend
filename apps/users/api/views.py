@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.generics import CreateAPIView
+from rest_framework.generics import CreateAPIView, UpdateAPIView
 from apps.users.api.serializers import RegisterSerializer,CustomTokenObtainPairSerializer, VerifyEmailSerializer
 from apps.users.utils import send_verification_email
 from drf_spectacular.utils import extend_schema
@@ -13,6 +13,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenBlacklistVi
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from apps.users.permissions import IsInAdministratorGroup
+from apps.users.api.serializers import UserStatusSerializer
 
 User = get_user_model()
 
@@ -101,3 +103,38 @@ class LogoutView(TokenBlacklistView):
     POST /api/users/logout/
     """
     pass
+
+
+class UserStatusUpdateView(UpdateAPIView):
+    """
+    API view para inhabilitar/habilitar usuarios.
+    Solo accesible para administradores.
+    
+    PATCH /api/admin/usuarios/{id}/
+    
+    Body:
+    {
+        "is_active": true/false
+    }
+    """
+    serializer_class = UserStatusSerializer
+    queryset = User.objects.all()
+    permission_classes = [IsInAdministratorGroup]
+    http_method_names = ['patch', 'options']
+    
+    def get_object(self):
+        """
+        Obtiene el usuario a modificar
+        """
+        user_id = self.kwargs.get('pk')
+        try:
+            return User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound(detail="Usuario no encontrado")
+    
+    def patch(self, request, *args, **kwargs):
+        """
+        Actualiza el estado is_active del usuario
+        """
+        return self.partial_update(request, *args, **kwargs)

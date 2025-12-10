@@ -80,7 +80,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'email': user.email,
             'phone': user.phone,
             'is_admin': user.groups.filter(name='Administrator').exists(),
-            'profile_photo': profile_photo_url,
+            'profile_photo': profile_photo_url if user.profile_photo else None,
             'email_verified': user.email_verified,
             'groups': list(user.groups.values_list('name', flat=True)),
         }

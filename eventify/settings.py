@@ -13,6 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 load_dotenv()
 
@@ -96,6 +97,13 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CELERY_BEAT_SCHEDULE = {
+    "scan-reminders-every-5-min": {
+        "task": "apps.events.tasks.scan_and_schedule_reminders",
+        "schedule": 300.0,
+    }
+}
 
 ROOT_URLCONF = 'eventify.urls'
 
@@ -181,6 +189,10 @@ FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
+
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_TIMEZONE = 'America/Bogota'
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'False') == 'True'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"

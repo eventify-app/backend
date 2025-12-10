@@ -51,7 +51,7 @@ def scan_and_schedule_reminders():
 
     se_qs = (StudentEvent.objects
              .select_related("event", "student")
-             .filter(event__deleted_at__isnull=True)
+             .filter(event__disabled_at__isnull=True)
              .filter(Q(event__start_date__gte=timezone.localdate()))
              .filter(Q(student__notif_prefs__email_enabled=True) | Q(student__notif_prefs__isnull=True))
              )

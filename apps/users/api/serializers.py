@@ -67,6 +67,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         user = self.user
 
+        request = self.context.get('request')
+        if user.profile_photo:
+            profile_photo_url = request.build_absolute_uri(user.profile_photo.url) if request else user.profile_photo.url
+
+
         data['user'] = {
             'id': user.id,
             'first_name': user.first_name,
@@ -75,6 +80,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'email': user.email,
             'phone': user.phone,
             'is_admin': user.groups.filter(name='Administrator').exists(),
+            'profile_photo': profile_photo_url,
             'email_verified': user.email_verified,
             'groups': list(user.groups.values_list('name', flat=True)),
         }

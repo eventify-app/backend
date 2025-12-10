@@ -499,6 +499,14 @@ class EventRatingViewSet(viewsets.ModelViewSet):
         serializer.save(user=user, event=event)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Event Comments"]),
+    retrieve=extend_schema(tags=["Event Comments"]),
+    create=extend_schema(tags=["Event Comments"]),
+    update=extend_schema(tags=["Event Comments"]),
+    partial_update=extend_schema(tags=["Event Comments"]),
+    destroy=extend_schema(tags=["Event Comments"]),
+)
 class EventCommentViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing event comments.

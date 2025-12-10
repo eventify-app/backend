@@ -52,7 +52,7 @@ INSTALLED_APPS = [
     'apps.analytics',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-
+    'apps.notifications',
 ]
 
 REST_FRAMEWORK = {

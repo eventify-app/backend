@@ -20,6 +20,9 @@ class Category(models.Model):
 
 
 class Event(models.Model):
+    """
+    Model for events.
+    """
     deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='deleted_events', on_delete=models.SET_NULL)
     title = models.CharField(max_length=120, null=True)
     description = models.TextField(blank=True)
@@ -47,7 +50,12 @@ class Event(models.Model):
         blank=True
     )
 
+
 class StudentEvent(models.Model):
+    """
+    Model for student event attendance.
+    Links students to events they are attending.
+    """
     event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='student_events')
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='student_events')
 
@@ -61,6 +69,11 @@ class StudentEvent(models.Model):
 
 
 class EventRating(models.Model):
+    """
+    Model for event ratings.
+    Allows users to rate events they have attended.
+    1 to 5 scale.
+    """
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_ratings')
     event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='ratings')
 
@@ -73,6 +86,10 @@ class EventRating(models.Model):
 
 
 class EventComment(models.Model):
+    """
+    Model for event comments.
+    Allows users to comment on events.
+    """
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='comments')
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     content = models.TextField()
@@ -112,12 +129,18 @@ class CommentReport(models.Model):
 
 
 class NotificationPreference(models.Model):
+    """
+    Model for user notification preferences.
+    """
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notif_prefs")
     email_enabled = models.BooleanField(default=True)
     hours_before = models.PositiveSmallIntegerField(default=24)
 
 
 class EventReminder(models.Model):
+    """
+    Model for event reminders.
+    """
     KIND_CHOICES = [
         ("pre", "Pre-event"),
         ("post", "Post-event"),

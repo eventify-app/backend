@@ -3,6 +3,7 @@ services:
     container_name: web
     build:
       context: .
+      dockerfile: Dockerfile.dev
     ports:
       - "8000:8000"
     command: ["sh", "-c", "./wait-for-it.sh eventify_db:5432 -- ./start.sh"]
@@ -18,6 +19,7 @@ services:
     image: postgres:15
     platform: linux/amd64
     restart: always
+    profiles: ["dev"]
     volumes:
       - eventify_db_data:/var/lib/postgresql/data
     environment:
@@ -36,15 +38,22 @@ services:
     container_name: celery
     build:
       context: .
+      dockerfile: Dockerfile.dev
     command: celery -A eventify worker -l info
+    env_file:
+      - .env
     depends_on:
       - web
       - redis
 
   celery_beat:
     container_name: celery_beat
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
     command: celery -A eventify beat -l info
+    env_file:
+      - .env
     depends_on:
       - web
       - redis

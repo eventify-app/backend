@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport
+from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport, \
+    NotificationPreference
 from apps.events.utils import compute_status
 from apps.users.models import User
 from django.utils import timezone
@@ -275,3 +276,9 @@ class ReportCommentSerializer(serializers.Serializer):
         help_text="Razón del reporte",
         required=True
     )
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = ['email_enabled', 'hours_before']

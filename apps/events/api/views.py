@@ -10,14 +10,17 @@ from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper, Max
-from rest_framework import status
+from rest_framework import status, mixins
 from datetime import datetime, timedelta
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport
+from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport, \
+    NotificationPreference
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
-    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, \
-    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, ReportedCommentSerializer, ReportCommentSerializer
+    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, \
+    AttendeeStatsSerializer, \
+    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, \
+    ReportedCommentSerializer, ReportCommentSerializer, NotificationPreferenceSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -757,3 +760,19 @@ class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(comment_data)
         return Response(serializer.data)
 
+
+
+@extend_schema(tags=["Notifications"])
+class NotificationPreferenceViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet
+):
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = NotificationPreferenceSerializer
+
+    def get_object(self):
+        obj, _ = NotificationPreference.objects.get_or_create(user=self.request.user)
+        self.check_object_permissions(self.request, obj)
+        return obj

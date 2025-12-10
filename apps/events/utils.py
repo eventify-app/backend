@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.utils import timezone
 
 def combine(dt_date, dt_time):
@@ -23,3 +23,11 @@ def compute_status(event):
     is_ongoing = bool(start and end and start <= now <= end)
     is_upcoming = bool(start and now < start)
     return is_finished, is_ongoing, is_upcoming
+
+
+def reminder_datetime(event, user):
+    """
+    Compute the reminder datetime for an event based on user preferences.
+    """
+    hours = getattr(getattr(user, "notif_prefs", None), "hours_before", 24)
+    return combine(event.start_date, event.start_time) - timedelta(hours=hours)

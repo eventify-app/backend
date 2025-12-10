@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.db.models.query_utils import Q
 
 
 class Category(models.Model):
@@ -108,3 +109,30 @@ class CommentReport(models.Model):
 
     def __str__(self):
         return f"Reporte de comentario {self.reported_by.username} sobre el comentario {self.comment.id}"
+
+
+class NotificationPreference(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notif_prefs")
+    email_enabled = models.BooleanField(default=True)
+    hours_before = models.PositiveSmallIntegerField(default=24)
+
+
+class EventReminder(models.Model):
+    KIND_CHOICES = [
+        ("pre", "Pre-event"),
+        ("post", "Post-event"),
+    ]
+
+    event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name='reminders')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_reminders')
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default="pre")
+    scheduled_for = models.DateTimeField()
+    sent_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, default="pending")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['event', 'user', 'kind'], name="unique_pre_post_reminder")
+        ]
+
+        indexes = [models.Index(fields=["scheduled_for"]), models.Index(fields=["event", "user"])]

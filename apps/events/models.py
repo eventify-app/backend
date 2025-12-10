@@ -108,3 +108,16 @@ class CommentReport(models.Model):
 
     def __str__(self):
         return f"Reporte de comentario {self.reported_by.username} sobre el comentario {self.comment.id}"
+
+
+class EventReport(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='reports')
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_reports')
+    reason = models.TextField(help_text="Motivo del reporte")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('event', 'reported_by')
+        verbose_name = 'Reporte de Evento'
+        verbose_name_plural = 'Reportes de Eventos'
+        ordering = ['-created_at']

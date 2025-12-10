@@ -179,11 +179,21 @@ class EventRatingSerializer(serializers.ModelSerializer):
 class EventCommentSerializer(serializers.ModelSerializer):
     author = serializers.StringRelatedField(read_only=True) #mostrar nombre autor
     author_id = serializers.IntegerField(source='author.id', read_only=True)
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta: 
         model = EventComment
-        fields = ['id', 'event', 'author', 'author_id', 'content', 'created_at']
-        read_only_fields = ['id', 'event', 'author', 'author_id', 'created_at']
+        fields = ['id', 'event', 'author', 'author_id', 'profile_photo', 'content', 'created_at']
+        read_only_fields = ['id', 'event', 'author', 'author_id', 'profile_photo', 'created_at']
+
+    def get_profile_photo(self, obj):
+        photo = getattr(obj.author, 'profile_photo', None)
+        if not photo:
+            return None
+
+        url = getattr(photo, 'url', None) or str(photo)
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if (request and url) else url
 
 class StudentEventSerializer(serializers.ModelSerializer):
     """

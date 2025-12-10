@@ -41,10 +41,10 @@ class EventViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Get events from database.
-        Filters out soft-deleted events by default.
+        Filters out inactive/disabled events by default.
         """
         
-        queryset = Event.objects.all().filter(deleted_at__isnull = True)
+        queryset = Event.objects.all().filter(is_active=True)
 
         # Annotate with participants_count for each event
         queryset = queryset.annotate(
@@ -84,7 +84,7 @@ class EventViewSet(viewsets.ModelViewSet):
     
     def perform_destroy(self, instance):
         """
-        Soft delete: marks event as deleted instead of removing from DB.
+        Soft delete: marks event as inactive instead of removing from DB.
         """
         user = self.request.user
         is_admin = user.groups.filter(name='Administrator').exists()
@@ -92,8 +92,9 @@ class EventViewSet(viewsets.ModelViewSet):
         if not (is_creator or is_admin):
             raise PermissionDenied("No tiene permiso para eliminar este evento.")
 
-        instance.deleted_at = timezone.now()
-        instance.deleted_by = self.request.user
+        instance.is_active = False
+        instance.disabled_at = timezone.now()
+        instance.disabled_by = self.request.user
         instance.save()
 
     @action(detail=False, methods=['get'], url_path='my-profile-events', permission_classes=[IsAuthenticated])
@@ -298,7 +299,7 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         one_month_ago = timezone.now() - timedelta(days=30)
-        my_events = Event.objects.filter(id_creator=user, deleted_at__isnull=True)
+        my_events = Event.objects.filter(id_creator=user, is_active=True)
         total_events = my_events.count()
 
         events_last_month = my_events.filter(
@@ -324,7 +325,7 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         one_month_ago = timezone.now() - timedelta(days=30)
-        my_events = Event.objects.filter(id_creator=user, deleted_at__isnull=True)
+        my_events = Event.objects.filter(id_creator=user, is_active=True)
         
         total_enrolled = StudentEvent.objects.filter(event__in=my_events).count()
         
@@ -354,7 +355,7 @@ class EventViewSet(viewsets.ModelViewSet):
         user = request.user
         my_events = Event.objects.filter(
             id_creator=user, 
-            deleted_at__isnull=True
+            is_active=True
         ).annotate(
             total_participants=Count('student_events', distinct=True),
             total_attended=Count('student_events', filter=Q(student_events__attended=True), distinct=True),
@@ -405,7 +406,7 @@ class EventViewSet(viewsets.ModelViewSet):
         for category in categories:
             events_in_category = Event.objects.filter(
                 id_creator=user,
-                deleted_at__isnull=True,
+                is_active=True,
                 categories=category
             )
             
@@ -501,7 +502,7 @@ class EventRatingViewSet(viewsets.ModelViewSet):
         """
         event_id = self.kwargs.get('event_id')
         try:
-            return Event.objects.get(pk=event_id, deleted_at__isnull=True)
+            return Event.objects.get(pk=event_id, is_active=True)
         except Event.DoesNotExist:
             raise NotFound({'detail': 'Evento no encontrado.'})
 
@@ -557,7 +558,7 @@ class EventCommentViewSet(viewsets.ModelViewSet):
         """
         event_id = self.kwargs.get('event_id')
         try:
-            return Event.objects.get(pk=event_id, deleted_at__isnull=True)
+            return Event.objects.get(pk=event_id, is_active=True)
         except Event.DoesNotExist:
             raise NotFound({'detail': 'Evento no encontrado.'})
 
@@ -824,7 +825,7 @@ class EventReportViewSet(viewsets.ReadOnlyModelViewSet):
         # Get events that have at least one report
         reported_events = Event.objects.filter(
             reports__isnull=False,
-            deleted_at__isnull=True  # Solo eventos activos
+            is_active=True  # Solo eventos activos
         ).annotate(
             report_count=Count('reports', distinct=True),
             latest_report_date=Max('reports__created_at')
@@ -885,4 +886,66 @@ class EventReportViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(event_data)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='disable')
+    def disable_event(self, request, pk=None):
+        """
+        Disable a reported event.
+        Only administrators can disable events.
+        """
+        user = request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden inhabilitar eventos.")
+        
+        try:
+            event = Event.objects.get(pk=pk)
+        except Event.DoesNotExist:
+            raise NotFound({'detail': 'Evento no encontrado.'})
+
+        if not event.is_active:
+            return Response(
+                {'detail': 'El evento ya está inhabilitado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        event.is_active = False
+        event.disabled_at = timezone.now()
+        event.disabled_by = user
+        event.save()
+
+        return Response(
+            {'detail': 'Evento inhabilitado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore_event(self, request, pk=None):
+        """
+        Restore a disabled event.
+        Only administrators can restore events.
+        """
+        user = request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden restaurar eventos.")
+
+        try:
+            event = Event.objects.get(pk=pk)
+        except Event.DoesNotExist:
+            raise NotFound({'detail': 'Evento no encontrado.'})
+
+        if event.is_active:
+            return Response(
+                {'detail': 'El evento ya está activo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        event.is_active = True
+        event.disabled_at = None
+        event.disabled_by = None
+        event.save()
+
+        return Response(
+            {'detail': 'Evento restaurado correctamente.'},
+            status=status.HTTP_200_OK
+        )
 

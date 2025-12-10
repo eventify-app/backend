@@ -19,7 +19,6 @@ class Category(models.Model):
 
 
 class Event(models.Model):
-    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='deleted_events', on_delete=models.SET_NULL)
     title = models.CharField(max_length=120, null=True)
     description = models.TextField(blank=True)
     cover_image = models.ImageField(upload_to="events/covers/", null=True, blank=True)
@@ -28,9 +27,18 @@ class Event(models.Model):
     start_date = models.DateField()
     end_time = models.TimeField()
     end_date = models.DateField()
-    deleted_at = models.DateTimeField(null=True, blank=True)
     id_creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     max_capacity = models.PositiveIntegerField(null=True, blank=True, help_text="Capacidad máxima de asistentes. Si es null, capacidad ilimitada.")
+    
+    is_active = models.BooleanField(default=True, help_text="Indica si el evento está activo o inhabilitado")
+    disabled_at = models.DateTimeField(null=True, blank=True)
+    disabled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name='disabled_events',
+        on_delete=models.SET_NULL
+    )
 
     categories = models.ManyToManyField(
         Category,

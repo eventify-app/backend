@@ -30,7 +30,7 @@ class EventSerializer(serializers.ModelSerializer):
     The creator is automatically assigned from the authenticated user.
     """
     id_creator = EventCreatorSerializer(read_only=True)
-    deleted_by = EventCreatorSerializer(read_only=True)
+    disabled_by = EventCreatorSerializer(read_only=True)
 
     participants_count = serializers.IntegerField(read_only=True)
     is_enrolled = serializers.BooleanField(read_only=True)
@@ -48,10 +48,10 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             'id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date',
-            'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity', 'participants_count', 'is_enrolled',
+            'end_time', 'id_creator', 'disabled_by', 'disabled_at', 'is_active', 'max_capacity', 'participants_count', 'is_enrolled',
             'categories', 'categories_ids'
         ]
-        read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by', 'participants_count', 'is_enrolled', 'categories']
+        read_only_fields = ['id', 'id_creator', 'disabled_at', 'disabled_by', 'is_active', 'participants_count', 'is_enrolled', 'categories']
 
     def validate(self, data):
         """

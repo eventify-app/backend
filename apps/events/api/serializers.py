@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport
+from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport, EventReport
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -261,3 +261,39 @@ class ReportCommentSerializer(serializers.Serializer):
         help_text="Razón del reporte",
         required=True
     )
+
+class EventReportSerializer(serializers.ModelSerializer):
+    """
+    Serializer for event reports.
+    """
+    reported_by = EventCreatorSerializer(read_only=True)
+    event = EventSerializer(read_only=True)
+    event_id = serializers.PrimaryKeyRelatedField(
+        queryset=Event.objects.all(),
+        source='event',
+        write_only=True
+    )
+
+    class Meta:
+        model = EventReport
+        fields = ['id', 'event', 'event_id', 'reported_by', 'reason', 'created_at']
+        read_only_fields = ['id', 'reported_by', 'created_at', 'event']
+
+class ReportEventSerializer(serializers.Serializer):
+    """
+    Serializer for reporting an event.
+    """
+    reason = serializers.CharField(
+        help_text="Motivo del reporte",
+        required=True
+    )
+
+class ReportedEventSerializer(serializers.Serializer):
+    """
+    Serializer for reported events with aggregated report data.
+    """
+    event = EventSerializer()
+    report_count = serializers.IntegerField()
+    latest_report_date = serializers.DateTimeField()
+    reports = EventReportSerializer(many=True)
+

@@ -14,10 +14,11 @@ from rest_framework import status
 from datetime import datetime, timedelta
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport
+from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport, EventReport
 from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
     EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, \
-    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, ReportedCommentSerializer, ReportCommentSerializer
+    PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer, ReportedCommentSerializer, ReportCommentSerializer, \
+    EventReportSerializer, ReportedEventSerializer, ReportEventSerializer
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -433,6 +434,44 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = CategoryAttendeeStatsSerializer(stats_by_category, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=ReportEventSerializer,
+        responses={
+            201: {'description': 'Evento reportado correctamente.'},
+            400: {'description': 'Error en la validación o evento ya reportado.'},
+            404: {'description': 'Evento no encontrado.'}
+        })
+    @action(detail=True, methods=['post'], url_path='report', permission_classes=[IsAuthenticated])
+    def report_event(self, request, pk=None):
+        """
+        Report an event as inappropriate.
+        """
+        event = self.get_object()
+        
+        # Check if user already reported this event
+        if EventReport.objects.filter(event=event, reported_by=request.user).exists():
+            return Response(
+                {'detail': 'Ya has reportado este evento.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reason = request.data.get('reason')
+        if not reason:
+            return Response(
+                {'detail': 'Debe proporcionar un motivo para el reporte.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        EventReport.objects.create(
+            event=event,
+            reported_by=request.user,
+            reason=reason
+        )
+        
+        return Response(
+            {'detail': 'Evento reportado correctamente.'},
+            status=status.HTTP_201_CREATED
+        )
 
 
 @extend_schema_view(
@@ -755,5 +794,95 @@ class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
         }
         
         serializer = self.get_serializer(comment_data)
+        return Response(serializer.data)
+
+
+@extend_schema_view(
+    list=extend_schema(tags=['Event Reports']),
+)
+class EventReportViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for administrators to view reported events.
+    Only administrators can access this endpoint.
+    """
+    serializer_class = ReportedEventSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Get all events that have been reported, with report counts.
+        Only accessible by administrators.
+        """
+        # Prevent error during schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return Event.objects.none()
+
+        user = self.request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden ver los eventos reportados.")
+        
+        # Get events that have at least one report
+        reported_events = Event.objects.filter(
+            reports__isnull=False,
+            deleted_at__isnull=True  # Solo eventos activos
+        ).annotate(
+            report_count=Count('reports', distinct=True),
+            latest_report_date=Max('reports__created_at')
+        ).distinct().order_by('-latest_report_date')
+        
+        return reported_events
+
+    def list(self, request, *args, **kwargs):
+        """
+        List all reported events with their reports.
+        """
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        
+        # Prepare data with reports
+        events_data = []
+        for event in (page if page is not None else queryset):
+            reports = EventReport.objects.filter(event=event).select_related('reported_by')
+            
+            # Annotate event with required fields
+            event_annotated = Event.objects.filter(pk=event.pk).annotate(
+                participants_count=Count('student_events', distinct=True),
+                is_enrolled=Value(False, output_field=BooleanField())
+            ).first()
+            
+            events_data.append({
+                'event': event_annotated,
+                'report_count': event.report_count,
+                'latest_report_date': event.latest_report_date,
+                'reports': reports
+            })
+        
+        serializer = self.get_serializer(events_data, many=True)
+        
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a specific reported event with its reports.
+        """
+        event = self.get_object()
+        
+        # Annotate event with required fields
+        event_annotated = Event.objects.filter(pk=event.pk).annotate(
+            participants_count=Count('student_events', distinct=True),
+            is_enrolled=Value(False, output_field=BooleanField())
+        ).first()
+        
+        reports = EventReport.objects.filter(event=event).select_related('reported_by')
+        event_data = {
+            'event': event_annotated,
+            'report_count': event.report_count,
+            'latest_report_date': event.latest_report_date,
+            'reports': reports
+        }
+        
+        serializer = self.get_serializer(event_data)
         return Response(serializer.data)
 

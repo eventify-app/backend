@@ -121,3 +121,6 @@ class EventReport(models.Model):
         verbose_name = 'Reporte de Evento'
         verbose_name_plural = 'Reportes de Eventos'
         ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reporte de evento {self.reported_by.username} sobre el evento{self.event.id}"

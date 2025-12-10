@@ -1,3 +1,7 @@
+import hashlib
+import secrets
+from datetime import timedelta
+from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.mail import send_mail
@@ -21,3 +25,21 @@ def send_verification_email(user):
     )
 
     send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
+
+def generate_otp_code():
+    """
+    Generate a secure 6-digit OTP code.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"  # 000000 to 999999 with leading zeros
+
+def hash_code(code):
+    """
+    Hash the given code using SHA-256.
+    """
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+def expiry(minutes=10):
+    """
+    Calculate the expiry time by adding given minutes to current time.
+    """
+    return timezone.now() + timedelta(minutes=minutes)

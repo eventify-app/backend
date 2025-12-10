@@ -1,5 +1,5 @@
 from django.urls import path, include
-from apps.events.api.views import EventViewSet, EventRatingViewSet, EventCommentViewSet, CategoryViewSet, CommentReportViewSet, EventReportViewSet
+from apps.events.api.views import EventViewSet, EventRatingViewSet, EventCommentViewSet, CategoryViewSet, CommentReportViewSet, EventReportViewSet, NotificationPreferenceViewSet
 from rest_framework.routers import DefaultRouter
 
 
@@ -11,17 +11,36 @@ router.register(r'reported-events', EventReportViewSet, basename='reported-event
 
 urlpatterns = router.urls + [
     path("events/<int:event_id>/ratings/", EventRatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='event-rating-list'),
-    path("events/<int:event_id>/ratings/<int:pk>/", EventRatingViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update' , 'delete': 'destroy'}), name='event-rating-detail'),
+
+    path("events/<int:event_id>/ratings/<int:pk>/", EventRatingViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update' ,
+        'delete': 'destroy'
+    }),
+         name='event-rating-detail'
+    ),
+
+    path("notifications/preferences/", NotificationPreferenceViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update'
+    }),
+        name='notification-preferences'
+    ),
+
     path("events/<int:event_id>/comments/", EventCommentViewSet.as_view({
         'get': 'list',
         'post': 'create'
     }), name= 'event-comments-list'),
+
     path("events/<int:event_id>/comments/<int:pk>/", EventCommentViewSet.as_view({
         'get': 'retrieve',
         'put': 'update',
         'patch': 'partial_update',
         'delete': 'destroy'
-    }), name= 'event-comments-detail') ,
+    }), name= 'event-comments-detail'),
+
     path("events/<int:event_id>/comments/<int:pk>/report/", EventCommentViewSet.as_view({
         'post': 'report_comment'
     }), name='event-comment-report'),

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport, EventReport
+from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport, EventReport, NotificationPreference
+from apps.events.utils import compute_status
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -44,14 +45,30 @@ class EventSerializer(serializers.ModelSerializer):
         allow_empty=False
     )
 
-    class Meta: 
+    is_finished = serializers.SerializerMethodField()
+    is_ongoing = serializers.SerializerMethodField()
+    is_upcoming = serializers.SerializerMethodField()
+
+    def get_is_finished(self, obj):
+        return compute_status(obj)[0]
+
+    def get_is_ongoing(self, obj):
+        return compute_status(obj)[1]
+
+    def get_is_upcoming(self, obj):
+        return compute_status(obj)[2]
+
+    class Meta:
         model = Event
         fields = [
             'id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date',
             'end_time', 'id_creator', 'disabled_by', 'disabled_at', 'is_active', 'max_capacity', 'participants_count', 'is_enrolled',
-            'categories', 'categories_ids'
+            'categories', 'categories_ids', 'is_finished', 'is_ongoing', 'is_upcoming'
         ]
-        read_only_fields = ['id', 'id_creator', 'disabled_at', 'disabled_by', 'is_active', 'participants_count', 'is_enrolled', 'categories']
+        read_only_fields = [
+            'id', 'id_creator', 'disabled_at', 'disabled_by', 'is_active',
+            'participants_count', 'is_enrolled', 'categories', 'is_finished', 'is_ongoing', 'is_upcoming'
+        ]
 
     def validate(self, data):
         """
@@ -297,3 +314,8 @@ class ReportedEventSerializer(serializers.Serializer):
     latest_report_date = serializers.DateTimeField()
     reports = EventReportSerializer(many=True)
 
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = ['email_enabled', 'hours_before']

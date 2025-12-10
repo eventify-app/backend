@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
@@ -119,3 +121,65 @@ class UserStatusSerializer(serializers.ModelSerializer):
         instance.is_active = validated_data.get('is_active', instance.is_active)
         instance.save(update_fields=['is_active'])
         return instance
+
+class UserSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        required=False,
+        validators=[UniqueValidator(queryset=User.objects.all(), message="Este nombre de usuario ya está en uso.")]
+    )
+    phone = serializers.CharField(
+        required=False,
+        allow_null=True,
+        validators=[UniqueValidator(queryset=User.objects.all(), message="Este número de teléfono ya está en uso.")]
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            "id", "username", "first_name", "last_name",
+            "date_of_birth", "phone", "profile_photo", "email",
+            "email_verified",
+        ]
+        read_only_fields = ["id", "email", "email_verified", "profile_photo"]
+
+    def validate_date_of_birth(self, dob):
+        if dob and dob >= timezone.localdate():
+            raise serializers.ValidationError("La fecha de nacimiento debe ser en el pasado.")
+        return dob
+
+
+class EmailChangeRequestOTPSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+
+    def validate_new_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Este email ya está en uso.")
+        return value
+
+
+class EmailChangeVerifyOTPSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+    code = serializers.RegexField(r"^\d{6}$", help_text="Código de 6 dígitos")
+
+
+def validate_image(file):
+    """
+    Validates an image file for size and format.
+    """
+    if file.size > 2 * 1024 * 1024:
+        raise serializers.ValidationError("La imagen no puede superar 2 MB.")
+    ct = getattr(file, "content_type", "")
+    if ct not in {"image/jpeg", "image/png", "image/webp"}:
+        raise serializers.ValidationError("Formatos permitidos: JPG, PNG, WEBP.")
+    return file
+
+
+class ProfilePhotoSerializer(serializers.Serializer):
+    """
+    Serializer for uploading a profile photo.
+    """
+    profile_photo = serializers.ImageField(required=True)
+
+    def validate_profile_photo(self, f):
+        return validate_image(f)
+

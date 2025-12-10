@@ -329,3 +329,11 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationPreference
         fields = ['email_enabled', 'hours_before']
+
+
+class EventRatingsAverageSerializer(serializers.Serializer):
+    total_finished_events = serializers.IntegerField()
+    events_with_ratings = serializers.IntegerField()
+    total_ratings = serializers.IntegerField()
+    average_rating = serializers.FloatField()
+    events_without_ratings = serializers.IntegerField()

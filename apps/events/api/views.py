@@ -625,6 +625,9 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 @extend_schema_view(
     list=extend_schema(tags=['Comment Reports']),
+    retrieve=extend_schema(tags=['Comment Reports']),
+    disable_comment=extend_schema(tags=['Comment Reports']),
+    restore_comment=extend_schema(tags=['Comment Reports']),
 )
 class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
     """

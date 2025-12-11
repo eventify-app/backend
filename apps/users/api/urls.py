@@ -1,7 +1,11 @@
 from django.urls.conf import path
+from rest_framework.routers import DefaultRouter
 
 from apps.users.api.views import RegisterView, LoginView, VerifyEmailView, LogoutView, UserView, \
-    EmailChangeRequestOTPView, EmailChangeVerifyOTPView, ProfilePhotoView, UserStatusUpdateView
+    EmailChangeRequestOTPView, EmailChangeVerifyOTPView, ProfilePhotoView, UserStatusUpdateView, UserViewSet
+
+router = DefaultRouter()
+router.register("", UserViewSet, basename="users")
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -12,5 +16,5 @@ urlpatterns = [
     path("", UserView.as_view(), name="user-detail"),
     path("change-email/request/", EmailChangeRequestOTPView.as_view(), name="users-change-email"),
     path("change-email/verify/", EmailChangeVerifyOTPView.as_view(), name="users-confirm-email-change"),
-    path("profile-photo/", ProfilePhotoView.as_view(), name="users-profile-photo"),
-]
+    path("profile-photo/", ProfilePhotoView.as_view(), name="users-profile-photo")
+] + router.urls

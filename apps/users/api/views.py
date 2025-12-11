@@ -1,17 +1,22 @@
 import threading
 
 from django.core.files.storage import default_storage
+from django.shortcuts import get_object_or_404
 from rest_framework.parsers import FormParser, MultiPartParser
 from django.utils import timezone
 
 from django.core.mail import send_mail
 from django.db import transaction
 from django.contrib.auth import get_user_model
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, UpdateAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.decorators import action
+
+from apps.events.api.serializers import EventSerializer
+from apps.events.models import Event
 from apps.users.api.serializers import (
     RegisterSerializer,
     CustomTokenObtainPairSerializer,
@@ -19,11 +24,11 @@ from apps.users.api.serializers import (
     UserSerializer,
     EmailChangeRequestOTPSerializer,
     EmailChangeVerifyOTPSerializer,
-    ProfilePhotoSerializer,
+    ProfilePhotoSerializer, UserProfileEventsResponse,
 )
 from apps.users.models import EmailChangeOTP
 from apps.users.utils import send_verification_email, generate_otp_code, hash_code, expiry
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenBlacklistView
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
@@ -293,3 +298,70 @@ class UserStatusUpdateView(UpdateAPIView):
         Actualiza el estado is_active del usuario
         """
         return self.partial_update(request, *args, **kwargs)
+
+
+@extend_schema_view(
+    retrieve=extend_schema(tags=["users"]),
+    list=extend_schema(exclude=True),  # no haremos listado general
+)
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing user profiles and their associated events.
+    """
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+
+    @extend_schema(
+        tags=["users"],
+        parameters=[
+            OpenApiParameter(
+                name="limit",
+                description="Limit the number of events returned for both created and enrolled events.",
+                required=False,
+                type=int),
+        ],
+        responses=UserProfileEventsResponse,
+    )
+    @action(detail=True, methods=["get"], url_path="detail", permission_classes=[AllowAny])
+    def profile_events(self, request, pk=None):
+        """
+        Retrieve user profile along with events they have created and enrolled in.
+        """
+        user = get_object_or_404(self.get_queryset(), pk=pk)
+
+        limit = request.query_params.get("limit")
+        try:
+            limit = int(limit) if limit is not None else None
+        except ValueError:
+            limit = None
+
+        created_qs = (
+            Event.objects.filter(id_creator=user, disabled_at__isnull=True)
+            .order_by("-start_date", "-start_time")
+        )
+        enrolled_qs = (
+            Event.objects.filter(attendees=user, disabled_at__isnull=True)
+            .order_by("-start_date", "-start_time")
+        )
+
+        if limit:
+            created_qs = created_qs[:limit]
+            enrolled_qs = enrolled_qs[:limit]
+
+        user_data = UserSerializer(user, context={"request": request}).data
+        created_data = self._event_serialize(created_qs, request)
+        enrolled_data = self._event_serialize(enrolled_qs, request)
+
+        payload = {
+            "user": user_data,
+            "events_created": created_data,
+            "events_enrolled": enrolled_data,
+        }
+        return Response(payload, status=status.HTTP_200_OK)
+
+    def _event_serialize(self, qs, request):
+        return EventSerializer(qs, many=True, context={"request": request}).data

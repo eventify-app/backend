@@ -513,6 +513,14 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         now = timezone.now()
+
+        finished_events = Event.objects.filter(
+            id_creator=user,
+            is_active=True,
+        ).filter(
+            Q(end_date__lt=now.date()) | 
+            Q(end_date=now.date(), end_time__lt=now.time())
+        )
         
         # Calculate statistics
         total_finished = finished_events.count()

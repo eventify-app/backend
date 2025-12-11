@@ -332,6 +332,9 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
 
 
 class EventRatingsAverageSerializer(serializers.Serializer):
+    """
+    Serializer for average ratings of finished events.
+    """
     total_finished_events = serializers.IntegerField()
     events_with_ratings = serializers.IntegerField()
     total_ratings = serializers.IntegerField()

@@ -1,6 +1,7 @@
 import threading
 
 from django.core.files.storage import default_storage
+from django.db.models.aggregates import Count
 from django.shortcuts import get_object_or_404
 from rest_framework.parsers import FormParser, MultiPartParser
 from django.utils import timezone
@@ -341,10 +342,12 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
 
         created_qs = (
             Event.objects.filter(id_creator=user, disabled_at__isnull=True)
+            .annotate(participants_count=Count("student_events", distinct=True))
             .order_by("-start_date", "-start_time")
         )
         enrolled_qs = (
             Event.objects.filter(attendees=user, disabled_at__isnull=True)
+            .annotate(participants_count = Count("student_events", distinct=True))
             .order_by("-start_date", "-start_time")
         )
 

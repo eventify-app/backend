@@ -632,7 +632,9 @@ class EventCommentViewSet(viewsets.ModelViewSet):
         Get comments for a specific event.
         """
         event_id = self.kwargs.get('event_id')
-        return EventComment.objects.filter(event_id=event_id).select_related('author')
+        # Dont return disabled comments, disabled_at is not null
+        return EventComment.objects.filter(event_id=event_id, disabled_at__isnull=True).select_related('author')
+        #return EventComment.objects.filter(event_id=event_id).select_related('author')
 
     def get_event(self):
         """
@@ -935,7 +937,6 @@ class EventReportViewSet(viewsets.ReadOnlyModelViewSet):
         # Get events that have at least one report
         reported_events = Event.objects.filter(
             reports__isnull=False,
-            is_active=True  # Solo eventos activos
         ).annotate(
             report_count=Count('reports', distinct=True),
             latest_report_date=Max('reports__created_at')

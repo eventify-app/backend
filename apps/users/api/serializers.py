@@ -6,6 +6,8 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from apps.events.api.serializers import EventSerializer
+
 User = get_user_model()
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -152,6 +154,15 @@ class UserSerializer(serializers.ModelSerializer):
         if dob and dob >= timezone.localdate():
             raise serializers.ValidationError("La fecha de nacimiento debe ser en el pasado.")
         return dob
+
+
+class UserProfileEventsResponse(serializers.Serializer):
+    """
+    Serializer for user profile with created and enrolled events.
+    """
+    user = UserSerializer()
+    created = EventSerializer(many=True)
+    enrolled = EventSerializer(many=True)
 
 
 class EmailChangeRequestOTPSerializer(serializers.Serializer):

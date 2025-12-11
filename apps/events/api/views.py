@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper, Max
 from rest_framework import status, mixins
 from datetime import datetime, timedelta
+from django.contrib.auth.models import Group
 
 from apps.events.api.filters import EventFilter
 from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport, EventReport, NotificationPreference
@@ -21,8 +22,9 @@ from apps.events.api.serializers import (
     EventStatsSerializer, AttendeeStatsSerializer, PopularEventSerializer,
     CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer,
     ReportedCommentSerializer, ReportCommentSerializer, EventReportSerializer,
-    ReportedEventSerializer, ReportEventSerializer, NotificationPreferenceSerializer
+    ReportedEventSerializer, ReportEventSerializer, NotificationPreferenceSerializer, EventRatingsAverageSerializer
 )
+from apps.notifications.models import Notification, UserNotification
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -450,6 +452,7 @@ class EventViewSet(viewsets.ModelViewSet):
     def report_event(self, request, pk=None):
         """
         Report an event as inappropriate.
+        Creates a notification for all administrators.
         """
         event = self.get_object()
         
@@ -467,16 +470,75 @@ class EventViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Create the event report
         EventReport.objects.create(
             event=event,
             reported_by=request.user,
             reason=reason
         )
         
+        # Create notification for administrators
+        try:
+            # Create the notification
+            notification = Notification.objects.create(
+                description=f"User {request.user.username} reported event '{event.title}': {reason}",
+                type='REPORT_ALERT'
+            )
+            
+            # Get all administrators
+            admin_group = Group.objects.get(name='Administrator')
+            admins = admin_group.user_set.all()
+            
+            # Create UserNotification for each admin with read=False
+            for admin in admins:
+                UserNotification.objects.create(
+                    user=admin,
+                    notification=notification,
+                    read=False
+                )
+        except Group.DoesNotExist:
+            # If Administrator group doesn't exist, just continue without creating notifications
+            pass
+        
         return Response(
             {'detail': 'Evento reportado correctamente.'},
             status=status.HTTP_201_CREATED
         )
+
+    @action(detail=False, methods=['get'], url_path='my-ratings-average')
+    def my_ratings_average(self, request):
+        """
+        Get average ratings for finished events created by the user.
+        Only includes events that have already ended.
+        """
+        user = request.user
+        now = timezone.now()
+        
+        # Calculate statistics
+        total_finished = finished_events.count()
+        
+        events_with_ratings = finished_events.filter(
+            ratings__isnull=False
+        ).distinct().count()
+        
+        total_ratings = EventRating.objects.filter(
+            event__in=finished_events
+        ).count()
+        
+        average = EventRating.objects.filter(
+            event__in=finished_events
+        ).aggregate(avg=Avg('score'))['avg']
+        
+        data = {
+            'total_finished_events': total_finished,
+            'events_with_ratings': events_with_ratings,
+            'total_ratings': total_ratings,
+            'average_rating': round(average, 2) if average else 0.0,
+            'events_without_ratings': total_finished - events_with_ratings
+        }
+        
+        serializer = EventRatingsAverageSerializer(data)
+        return Response(serializer.data)
 
 
 @extend_schema_view(
@@ -622,6 +684,7 @@ class EventCommentViewSet(viewsets.ModelViewSet):
     def report_comment(self, request, event_id=None, pk=None):
         """
         Report a comment as inappropriate.
+        Creates a notification for all administrators.
         """
         try:
             comment = EventComment.objects.get(pk=pk, event_id=event_id)
@@ -642,11 +705,35 @@ class EventCommentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Create the comment report
         CommentReport.objects.create(
             comment=comment,
             reported_by=request.user,
             reason=reason
         )
+        
+        # Create notification for administrators
+        try:
+            # Create the notification
+            notification = Notification.objects.create(
+                description=f"User {request.user.username} reported a comment by {comment.author.username} on event '{comment.event.title}': {reason}",
+                type='REPORT_ALERT'
+            )
+            
+            # Get all administrators
+            admin_group = Group.objects.get(name='Administrator')
+            admins = admin_group.user_set.all()
+            
+            # Create UserNotification for each admin with read=False
+            for admin in admins:
+                UserNotification.objects.create(
+                    user=admin,
+                    notification=notification,
+                    read=False
+                )
+        except Group.DoesNotExist:
+            # If Administrator group doesn't exist, just continue without creating notifications
+            pass
         
         return Response(
             {'detail': 'Comentario reportado correctamente.'},

@@ -15,5 +15,5 @@ COPY . .
 
 CMD sh -c "python manage.py migrate --noinput && \
             python manage.py collectstatic --noinput && \
-            case \"$$SEED_ADMIN_ON_START\" in 1|true|TRUE|yes|YES) python manage.py seed_admin || true ;; *) echo 'Skip seed_admin' ;; esac && \
+            python manage.py seed_admin && \
             gunicorn eventify.wsgi:application -w 3 -k gthread -b 0.0.0.0:${PORT}"

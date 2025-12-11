@@ -49,13 +49,13 @@ class EventSerializer(serializers.ModelSerializer):
     is_ongoing = serializers.SerializerMethodField()
     is_upcoming = serializers.SerializerMethodField()
 
-    def get_is_finished(self, obj):
+    def get_is_finished(self, obj) -> bool:
         return compute_status(obj)[0]
 
-    def get_is_ongoing(self, obj):
+    def get_is_ongoing(self, obj) -> bool:
         return compute_status(obj)[1]
 
-    def get_is_upcoming(self, obj):
+    def get_is_upcoming(self, obj) -> bool:
         return compute_status(obj)[2]
 
     class Meta:
@@ -186,7 +186,7 @@ class EventCommentSerializer(serializers.ModelSerializer):
         fields = ['id', 'event', 'author', 'author_id', 'profile_photo', 'content', 'created_at']
         read_only_fields = ['id', 'event', 'author', 'author_id', 'profile_photo', 'created_at']
 
-    def get_profile_photo(self, obj):
+    def get_profile_photo(self, obj) -> str | None:
         photo = getattr(obj.author, 'profile_photo', None)
         if not photo:
             return None

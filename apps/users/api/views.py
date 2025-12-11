@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, UpdateAPIView
+from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, UpdateAPIView, GenericAPIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 
@@ -73,7 +73,7 @@ class UserView(RetrieveUpdateAPIView):
 
 
 @extend_schema(request=EmailChangeRequestOTPSerializer)
-class EmailChangeRequestOTPView(APIView):
+class EmailChangeRequestOTPView(GenericAPIView):
     """
     API view to request OTP for changing email.
     """
@@ -109,7 +109,7 @@ class EmailChangeRequestOTPView(APIView):
 
 
 @extend_schema(request=EmailChangeVerifyOTPSerializer)
-class EmailChangeVerifyOTPView(APIView):
+class EmailChangeVerifyOTPView(GenericAPIView):
     """
     API view to verify OTP and change user's email.
     """
@@ -207,7 +207,7 @@ class VerifyEmailView(APIView): # aqui heredo de APIView de drf
             )
 
 @extend_schema(request=ProfilePhotoSerializer)
-class ProfilePhotoView(APIView):
+class ProfilePhotoView(GenericAPIView):
     """
     API view to upload, update, or delete the user's profile photo.
     """

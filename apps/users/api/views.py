@@ -28,7 +28,7 @@ from apps.users.api.serializers import (
     ProfilePhotoSerializer, UserProfileEventsResponse,
 )
 from apps.users.models import EmailChangeOTP
-from apps.users.utils import send_verification_email, generate_otp_code, hash_code, expiry
+from apps.users.utils import send_verification_email, generate_otp_code, hash_code, expiry, absolute_media_url
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenBlacklistView
 from django.utils.encoding import force_str
@@ -237,7 +237,7 @@ class ProfilePhotoView(GenericAPIView):
                 pass
 
         return Response({
-            "profile_photo": user.profile_photo.url if user.profile_photo else None
+            "profile_photo": absolute_media_url(request, user.profile_photo)
         }, status=status.HTTP_200_OK)
 
     @transaction.atomic

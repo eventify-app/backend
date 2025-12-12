@@ -43,3 +43,18 @@ def expiry(minutes=10):
     Calculate the expiry time by adding given minutes to current time.
     """
     return timezone.now() + timedelta(minutes=minutes)
+
+def absolute_media_url(request, f):
+    """
+    Return the absolute URL for a media file.
+    """
+    if not f:
+        return None
+    url = getattr(f, "url", None)
+    if not url:
+        return None
+    # si ya es absoluto, devuélvelo tal cual
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    # si es relativo (p. ej. /media/... o /...):
+    return request.build_absolute_uri(url)

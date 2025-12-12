@@ -1,3 +1,6 @@
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
@@ -8,12 +11,16 @@ e164_validator = RegexValidator(
     message="Use formato E.164, ej: +573001234567",
 )
 
+def user_avatar_path(instance, filename):
+    ext = Path(filename).suffix or ".png"
+    return f"avatars/{instance.pk}/{uuid.uuid4().hex}{ext}"
+
 class User(AbstractUser):
     email = models.EmailField(unique=True, db_index=True)
     phone = models.CharField(max_length=16, validators=[e164_validator], null=True, blank=True, unique=True)
     email_verified = models.BooleanField(default=False)
     date_of_birth = models.DateField(null=True, blank=True)
-    profile_photo = models.ImageField(upload_to="users/avatars/", null=True, blank=True)
+    profile_photo = models.ImageField(upload_to=user_avatar_path, null=True, blank=True)
     deleted_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='deleted_users')
     deleted_at = models.DateTimeField(null=True, blank=True)
 

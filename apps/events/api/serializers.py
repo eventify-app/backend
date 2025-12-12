@@ -141,7 +141,7 @@ class EventParticipantSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='student.email', read_only=True)
     first_name = serializers.CharField(source='student.first_name', read_only=True)
     last_name = serializers.CharField(source='student.last_name', read_only=True)
-    profile_photo = serializers.CharField(source='student.profile_photo', read_only=True)
+    profile_photo = serializers.CharField(source='student.profile_photo.url', read_only=True)
     attended = serializers.BooleanField(read_only=True)
 
     class Meta:

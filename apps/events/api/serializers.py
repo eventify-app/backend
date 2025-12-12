@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category
+from apps.events.models import Event, EventRating, EventComment, StudentEvent, Category, CommentReport, EventReport, NotificationPreference
+from apps.events.utils import compute_status
 from apps.users.models import User
 from django.utils import timezone
 from datetime import datetime, date
@@ -30,7 +31,7 @@ class EventSerializer(serializers.ModelSerializer):
     The creator is automatically assigned from the authenticated user.
     """
     id_creator = EventCreatorSerializer(read_only=True)
-    deleted_by = EventCreatorSerializer(read_only=True)
+    disabled_by = EventCreatorSerializer(read_only=True)
 
     participants_count = serializers.IntegerField(read_only=True)
     is_enrolled = serializers.BooleanField(read_only=True)
@@ -44,14 +45,30 @@ class EventSerializer(serializers.ModelSerializer):
         allow_empty=False
     )
 
-    class Meta: 
+    is_finished = serializers.SerializerMethodField()
+    is_ongoing = serializers.SerializerMethodField()
+    is_upcoming = serializers.SerializerMethodField()
+
+    def get_is_finished(self, obj) -> bool:
+        return compute_status(obj)[0]
+
+    def get_is_ongoing(self, obj) -> bool:
+        return compute_status(obj)[1]
+
+    def get_is_upcoming(self, obj) -> bool:
+        return compute_status(obj)[2]
+
+    class Meta:
         model = Event
         fields = [
             'id', 'place', 'title', 'description', 'cover_image' ,'start_date', 'start_time', 'end_date',
-            'end_time', 'id_creator', 'deleted_by', 'deleted_at', 'max_capacity', 'participants_count', 'is_enrolled',
-            'categories', 'categories_ids'
+            'end_time', 'id_creator', 'disabled_by', 'disabled_at', 'is_active', 'max_capacity', 'participants_count', 'is_enrolled',
+            'categories', 'categories_ids', 'is_finished', 'is_ongoing', 'is_upcoming'
         ]
-        read_only_fields = ['id', 'id_creator', 'deleted_at', 'deleted_by', 'participants_count', 'is_enrolled', 'categories']
+        read_only_fields = [
+            'id', 'id_creator', 'disabled_at', 'disabled_by', 'is_active',
+            'participants_count', 'is_enrolled', 'categories', 'is_finished', 'is_ongoing', 'is_upcoming'
+        ]
 
     def validate(self, data):
         """
@@ -162,11 +179,21 @@ class EventRatingSerializer(serializers.ModelSerializer):
 class EventCommentSerializer(serializers.ModelSerializer):
     author = serializers.StringRelatedField(read_only=True) #mostrar nombre autor
     author_id = serializers.IntegerField(source='author.id', read_only=True)
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta: 
         model = EventComment
-        fields = ['id', 'event', 'author', 'author_id', 'content', 'created_at']
-        read_only_fields = ['id', 'event', 'author', 'author_id', 'created_at']
+        fields = ['id', 'event', 'author', 'author_id', 'profile_photo', 'content', 'created_at']
+        read_only_fields = ['id', 'event', 'author', 'author_id', 'profile_photo', 'created_at']
+
+    def get_profile_photo(self, obj) -> str | None:
+        photo = getattr(obj.author, 'profile_photo', None)
+        if not photo:
+            return None
+
+        url = getattr(photo, 'url', None) or str(photo)
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if (request and url) else url
 
 class StudentEventSerializer(serializers.ModelSerializer):
     """
@@ -226,3 +253,90 @@ class CategoryAttendeeStatsSerializer(serializers.Serializer):
     total_attended = serializers.IntegerField()
     attendance_rate = serializers.FloatField()
 
+class CommentReportSerializer(serializers.ModelSerializer):
+    """
+    Serializer for comment reports.
+    """
+    reported_by = EventCreatorSerializer(read_only=True)
+    comment = EventCommentSerializer(read_only=True)
+    comment_id = serializers.PrimaryKeyRelatedField(
+        queryset=EventComment.objects.all(),
+        source='comment',
+        write_only=True
+    )
+
+    class Meta:
+        model = CommentReport
+        fields = ['id', 'comment', 'comment_id', 'reported_by', 'reason', 'created_at']
+        read_only_fields = ['id', 'reported_by', 'created_at', 'comment']
+
+
+class ReportedCommentSerializer(serializers.Serializer):
+    """
+    Serializer for reported comments with aggregated report data.
+    """
+    comment = EventCommentSerializer()
+    report_count = serializers.IntegerField()
+    latest_report_date = serializers.DateTimeField()
+    reports = CommentReportSerializer(many=True)
+
+class ReportCommentSerializer(serializers.Serializer):
+    """
+    Serializer for reporting a comment.
+    """
+    reason = serializers.CharField(
+        help_text="Razón del reporte",
+        required=True
+    )
+
+class EventReportSerializer(serializers.ModelSerializer):
+    """
+    Serializer for event reports.
+    """
+    reported_by = EventCreatorSerializer(read_only=True)
+    event = EventSerializer(read_only=True)
+    event_id = serializers.PrimaryKeyRelatedField(
+        queryset=Event.objects.all(),
+        source='event',
+        write_only=True
+    )
+
+    class Meta:
+        model = EventReport
+        fields = ['id', 'event', 'event_id', 'reported_by', 'reason', 'created_at']
+        read_only_fields = ['id', 'reported_by', 'created_at', 'event']
+
+class ReportEventSerializer(serializers.Serializer):
+    """
+    Serializer for reporting an event.
+    """
+    reason = serializers.CharField(
+        help_text="Motivo del reporte",
+        required=True
+    )
+
+class ReportedEventSerializer(serializers.Serializer):
+    """
+    Serializer for reported events with aggregated report data.
+    """
+    event = EventSerializer()
+    report_count = serializers.IntegerField()
+    latest_report_date = serializers.DateTimeField()
+    reports = EventReportSerializer(many=True)
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = ['email_enabled', 'hours_before']
+
+
+class EventRatingsAverageSerializer(serializers.Serializer):
+    """
+    Serializer for average ratings of finished events.
+    """
+    total_finished_events = serializers.IntegerField()
+    events_with_ratings = serializers.IntegerField()
+    total_ratings = serializers.IntegerField()
+    average_rating = serializers.FloatField()
+    events_without_ratings = serializers.IntegerField()

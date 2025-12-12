@@ -43,7 +43,7 @@ class TopCategoriesView(APIView):
         limit = int(request.query_params.get("limit", 10))
         by = (request.query_params.get("by") or "enrollments").lower()
 
-        ev = Event.objects.filter(deleted_at__isnull=True)
+        ev = Event.objects.filter(disabled_at__isnull=True)
         if date_from: ev = ev.filter(start_date__gte=date_from)
         if date_to:   ev = ev.filter(start_date__lte=date_to)
 
@@ -95,7 +95,7 @@ class TopCreatorsView(APIView):
         limit = int(request.query_params.get("limit", 10))
         by = (request.query_params.get("by") or "enrollments").lower()
 
-        ev = Event.objects.filter(deleted_at__isnull=True)
+        ev = Event.objects.filter(disabled_at__isnull=True)
         if date_from: ev = ev.filter(start_date__gte=date_from)
         if date_to:   ev = ev.filter(start_date__lte=date_to)
 
@@ -149,7 +149,7 @@ class TopEventsView(APIView):
         date_from = p.get('from')
         date_to = p.get('to')
 
-        qs = Event.objects.filter(deleted_at__isnull=True)
+        qs = Event.objects.filter(disabled_at__isnull=True)
         if date_from:
             qs = qs.filter(start_date__gte=date_from)
         if date_to:
@@ -162,7 +162,7 @@ class TopEventsView(APIView):
                                        filter=Q(student_events__attended=True),
                                        distinct=True),
             )
-            .select_related("id_creator", "deleted_by")
+            .select_related("id_creator", "disabled_by")
             .prefetch_related("categories")
         )
 

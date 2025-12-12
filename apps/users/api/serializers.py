@@ -1,8 +1,12 @@
+from datetime import timezone
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from apps.events.api.serializers import EventSerializer
 
 User = get_user_model()
 
@@ -65,6 +69,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         user = self.user
 
+        request = self.context.get('request')
+        if user.profile_photo:
+            profile_photo_url = request.build_absolute_uri(user.profile_photo.url) if request else user.profile_photo.url
+
+
         data['user'] = {
             'id': user.id,
             'first_name': user.first_name,
@@ -73,6 +82,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'email': user.email,
             'phone': user.phone,
             'is_admin': user.groups.filter(name='Administrator').exists(),
+            'profile_photo': profile_photo_url if user.profile_photo else None,
             'email_verified': user.email_verified,
             'groups': list(user.groups.values_list('name', flat=True)),
         }
@@ -84,3 +94,109 @@ class VerifyEmailSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         return attrs
+
+class UserStatusSerializer(serializers.ModelSerializer):
+    """
+    Serializer para inhabilitar/habilitar usuarios.
+    Solo permite modificar el campo is_active.
+    """
+    is_active = serializers.BooleanField(required=True)
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'is_active']
+        read_only_fields = ['id', 'username', 'email']
+    
+    def validate(self, attrs):
+        """
+        Validación adicional si es necesario
+        """
+        user = self.instance
+        
+        # Prevenir que un admin se deshabilite a sí mismo
+        request_user = self.context.get('request').user
+        if user.id == request_user.id and not attrs.get('is_active', True):
+            raise serializers.ValidationError(
+                "No puedes deshabilitarte a ti mismo."
+            )
+        
+        return attrs
+    
+    def update(self, instance, validated_data):
+        """
+        Actualiza el estado del usuario
+        """
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.save(update_fields=['is_active'])
+        return instance
+
+class UserSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        required=False,
+        validators=[UniqueValidator(queryset=User.objects.all(), message="Este nombre de usuario ya está en uso.")]
+    )
+    phone = serializers.CharField(
+        required=False,
+        allow_null=True,
+        validators=[UniqueValidator(queryset=User.objects.all(), message="Este número de teléfono ya está en uso.")]
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            "id", "username", "first_name", "last_name",
+            "date_of_birth", "phone", "profile_photo", "email",
+            "email_verified",
+        ]
+        read_only_fields = ["id", "email", "email_verified", "profile_photo"]
+
+    def validate_date_of_birth(self, dob):
+        if dob and dob >= timezone.localdate():
+            raise serializers.ValidationError("La fecha de nacimiento debe ser en el pasado.")
+        return dob
+
+
+class UserProfileEventsResponse(serializers.Serializer):
+    """
+    Serializer for user profile with created and enrolled events.
+    """
+    user = UserSerializer()
+    created = EventSerializer(many=True)
+    enrolled = EventSerializer(many=True)
+
+
+class EmailChangeRequestOTPSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+
+    def validate_new_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Este email ya está en uso.")
+        return value
+
+
+class EmailChangeVerifyOTPSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+    code = serializers.RegexField(r"^\d{6}$", help_text="Código de 6 dígitos")
+
+
+def validate_image(file):
+    """
+    Validates an image file for size and format.
+    """
+    if file.size > 2 * 1024 * 1024:
+        raise serializers.ValidationError("La imagen no puede superar 2 MB.")
+    ct = getattr(file, "content_type", "")
+    if ct not in {"image/jpeg", "image/png", "image/webp"}:
+        raise serializers.ValidationError("Formatos permitidos: JPG, PNG, WEBP.")
+    return file
+
+
+class ProfilePhotoSerializer(serializers.Serializer):
+    """
+    Serializer for uploading a profile photo.
+    """
+    profile_photo = serializers.ImageField(required=True)
+
+    def validate_profile_photo(self, f):
+        return validate_image(f)
+

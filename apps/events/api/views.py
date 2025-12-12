@@ -9,14 +9,22 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper
-from rest_framework import status
+from django.db.models import Count, OuterRef, Avg, Q, F, FloatField, ExpressionWrapper, Max
+from rest_framework import status, mixins
 from datetime import datetime, timedelta
+from django.contrib.auth.models import Group
 
 from apps.events.api.filters import EventFilter
-from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category
-from apps.events.api.serializers import EventSerializer, EventParticipantSerializer, EventCheckInSerializer, \
-    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer, EventStatsSerializer, AttendeeStatsSerializer, PopularEventSerializer, CategoryAttendeeStatsSerializer, CategorySerializer
+from apps.events.models import Event, StudentEvent, EventRating, EventComment, Category, CommentReport, EventReport, NotificationPreference
+from apps.events.api.serializers import (
+    EventSerializer, EventParticipantSerializer, EventCheckInSerializer,
+    EventRatingSerializer, EventCommentSerializer, StudentEventSerializer,
+    EventStatsSerializer, AttendeeStatsSerializer, PopularEventSerializer,
+    CategoryAttendeeStatsSerializer, CategorySerializer, CommentReportSerializer,
+    ReportedCommentSerializer, ReportCommentSerializer, EventReportSerializer,
+    ReportedEventSerializer, ReportEventSerializer, NotificationPreferenceSerializer, EventRatingsAverageSerializer
+)
+from apps.notifications.models import Notification, UserNotification
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
@@ -39,10 +47,10 @@ class EventViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Get events from database.
-        Filters out soft-deleted events by default.
+        Filters out inactive/disabled events by default.
         """
         
-        queryset = Event.objects.all().filter(deleted_at__isnull = True)
+        queryset = Event.objects.all().filter(is_active=True)
 
         # Annotate with participants_count for each event
         queryset = queryset.annotate(
@@ -82,7 +90,7 @@ class EventViewSet(viewsets.ModelViewSet):
     
     def perform_destroy(self, instance):
         """
-        Soft delete: marks event as deleted instead of removing from DB.
+        Soft delete: marks event as inactive instead of removing from DB.
         """
         user = self.request.user
         is_admin = user.groups.filter(name='Administrator').exists()
@@ -90,8 +98,9 @@ class EventViewSet(viewsets.ModelViewSet):
         if not (is_creator or is_admin):
             raise PermissionDenied("No tiene permiso para eliminar este evento.")
 
-        instance.deleted_at = timezone.now()
-        instance.deleted_by = self.request.user
+        instance.is_active = False
+        instance.disabled_at = timezone.now()
+        instance.disabled_by = self.request.user
         instance.save()
 
     @action(detail=False, methods=['get'], url_path='my-profile-events', permission_classes=[IsAuthenticated])
@@ -296,7 +305,7 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         one_month_ago = timezone.now() - timedelta(days=30)
-        my_events = Event.objects.filter(id_creator=user, deleted_at__isnull=True)
+        my_events = Event.objects.filter(id_creator=user, is_active=True)
         total_events = my_events.count()
 
         events_last_month = my_events.filter(
@@ -322,7 +331,7 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         one_month_ago = timezone.now() - timedelta(days=30)
-        my_events = Event.objects.filter(id_creator=user, deleted_at__isnull=True)
+        my_events = Event.objects.filter(id_creator=user, is_active=True)
         
         total_enrolled = StudentEvent.objects.filter(event__in=my_events).count()
         
@@ -352,7 +361,7 @@ class EventViewSet(viewsets.ModelViewSet):
         user = request.user
         my_events = Event.objects.filter(
             id_creator=user, 
-            deleted_at__isnull=True
+            is_active=True
         ).annotate(
             total_participants=Count('student_events', distinct=True),
             total_attended=Count('student_events', filter=Q(student_events__attended=True), distinct=True),
@@ -403,7 +412,7 @@ class EventViewSet(viewsets.ModelViewSet):
         for category in categories:
             events_in_category = Event.objects.filter(
                 id_creator=user,
-                deleted_at__isnull=True,
+                is_active=True,
                 categories=category
             )
             
@@ -432,6 +441,112 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = CategoryAttendeeStatsSerializer(stats_by_category, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=ReportEventSerializer,
+        responses={
+            201: {'description': 'Evento reportado correctamente.'},
+            400: {'description': 'Error en la validación o evento ya reportado.'},
+            404: {'description': 'Evento no encontrado.'}
+        })
+    @action(detail=True, methods=['post'], url_path='report', permission_classes=[IsAuthenticated])
+    def report_event(self, request, pk=None):
+        """
+        Report an event as inappropriate.
+        Creates a notification for all administrators.
+        """
+        event = self.get_object()
+        
+        # Check if user already reported this event
+        if EventReport.objects.filter(event=event, reported_by=request.user).exists():
+            return Response(
+                {'detail': 'Ya has reportado este evento.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reason = request.data.get('reason')
+        if not reason:
+            return Response(
+                {'detail': 'Debe proporcionar un motivo para el reporte.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the event report
+        EventReport.objects.create(
+            event=event,
+            reported_by=request.user,
+            reason=reason
+        )
+        
+        # Create notification for administrators
+        try:
+            # Create the notification
+            notification = Notification.objects.create(
+                description=f"User {request.user.username} reported event '{event.title}': {reason}",
+                type='REPORT_ALERT'
+            )
+            
+            # Get all administrators
+            admin_group = Group.objects.get(name='Administrator')
+            admins = admin_group.user_set.all()
+            
+            # Create UserNotification for each admin with read=False
+            for admin in admins:
+                UserNotification.objects.create(
+                    user=admin,
+                    notification=notification,
+                    read=False
+                )
+        except Group.DoesNotExist:
+            # If Administrator group doesn't exist, just continue without creating notifications
+            pass
+        
+        return Response(
+            {'detail': 'Evento reportado correctamente.'},
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['get'], url_path='my-ratings-average')
+    def my_ratings_average(self, request):
+        """
+        Get average ratings for finished events created by the user.
+        Only includes events that have already ended.
+        """
+        user = request.user
+        now = timezone.now()
+
+        finished_events = Event.objects.filter(
+            id_creator=user,
+            is_active=True,
+        ).filter(
+            Q(end_date__lt=now.date()) | 
+            Q(end_date=now.date(), end_time__lt=now.time())
+        )
+        
+        # Calculate statistics
+        total_finished = finished_events.count()
+        
+        events_with_ratings = finished_events.filter(
+            ratings__isnull=False
+        ).distinct().count()
+        
+        total_ratings = EventRating.objects.filter(
+            event__in=finished_events
+        ).count()
+        
+        average = EventRating.objects.filter(
+            event__in=finished_events
+        ).aggregate(avg=Avg('score'))['avg']
+        
+        data = {
+            'total_finished_events': total_finished,
+            'events_with_ratings': events_with_ratings,
+            'total_ratings': total_ratings,
+            'average_rating': round(average, 2) if average else 0.0,
+            'events_without_ratings': total_finished - events_with_ratings
+        }
+        
+        serializer = EventRatingsAverageSerializer(data)
+        return Response(serializer.data)
 
 
 @extend_schema_view(
@@ -461,7 +576,7 @@ class EventRatingViewSet(viewsets.ModelViewSet):
         """
         event_id = self.kwargs.get('event_id')
         try:
-            return Event.objects.get(pk=event_id, deleted_at__isnull=True)
+            return Event.objects.get(pk=event_id, is_active=True)
         except Event.DoesNotExist:
             raise NotFound({'detail': 'Evento no encontrado.'})
 
@@ -495,6 +610,14 @@ class EventRatingViewSet(viewsets.ModelViewSet):
         serializer.save(user=user, event=event)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Event Comments"]),
+    retrieve=extend_schema(tags=["Event Comments"]),
+    create=extend_schema(tags=["Event Comments"]),
+    update=extend_schema(tags=["Event Comments"]),
+    partial_update=extend_schema(tags=["Event Comments"]),
+    destroy=extend_schema(tags=["Event Comments"]),
+)
 class EventCommentViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing event comments.
@@ -509,7 +632,9 @@ class EventCommentViewSet(viewsets.ModelViewSet):
         Get comments for a specific event.
         """
         event_id = self.kwargs.get('event_id')
-        return EventComment.objects.filter(event_id=event_id).select_related('author')
+        # Dont return disabled comments, disabled_at is not null
+        return EventComment.objects.filter(event_id=event_id, disabled_at__isnull=True).select_related('author')
+        #return EventComment.objects.filter(event_id=event_id).select_related('author')
 
     def get_event(self):
         """
@@ -517,17 +642,28 @@ class EventCommentViewSet(viewsets.ModelViewSet):
         """
         event_id = self.kwargs.get('event_id')
         try:
-            return Event.objects.get(pk=event_id, deleted_at__isnull=True)
+            return Event.objects.get(pk=event_id, is_active=True)
         except Event.DoesNotExist:
             raise NotFound({'detail': 'Evento no encontrado.'})
 
     def perform_create(self, serializer):
         """
         Create a comment for the event.
-        Automatically assigns the authenticated user as author.
+        Only users who attended the event can comment.
         """
         event = self.get_event()
-        serializer.save(author=self.request.user, event=event)
+        user = self.request.user
+
+        attended = StudentEvent.objects.filter(
+            event=event,
+            student=user,
+            attended=True
+        ).exists()
+
+        if not attended:
+            raise PermissionDenied({'detail': 'Solo los participantes que asistieron al evento pueden comentar.'})
+
+        serializer.save(author=user, event=event)
 
     def perform_update(self, serializer):
         """
@@ -547,6 +683,73 @@ class EventCommentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied({'detail': 'Solo puedes eliminar tus propios comentarios.'})
         instance.delete()
 
+    @extend_schema(
+    request=ReportCommentSerializer,
+    responses={
+        200: {'description': 'Comentario reportado correctamente.'},
+        400: {'description': 'Error en la validación o comentario ya reportado.'},
+        404: {'description': 'Comentario no encontrado.'}
+    })
+    @action(detail=True, methods=['post'], url_path='report', permission_classes=[IsAuthenticated])
+    def report_comment(self, request, event_id=None, pk=None):
+        """
+        Report a comment as inappropriate.
+        Creates a notification for all administrators.
+        """
+        try:
+            comment = EventComment.objects.get(pk=pk, event_id=event_id)
+        except EventComment.DoesNotExist:
+            raise NotFound({'detail': 'Comentario no encontrado.'})
+        
+        # Check if user already reported this comment
+        if CommentReport.objects.filter(comment=comment, reported_by=request.user).exists():
+            return Response(
+                {'detail': 'Ya has reportado este comentario.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reason = request.data.get('reason')
+        if not reason:
+            return Response(
+                {'detail': 'Debe proporcionar una razón para el reporte.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the comment report
+        CommentReport.objects.create(
+            comment=comment,
+            reported_by=request.user,
+            reason=reason
+        )
+        
+        # Create notification for administrators
+        try:
+            # Create the notification
+            notification = Notification.objects.create(
+                description=f"User {request.user.username} reported a comment by {comment.author.username} on event '{comment.event.title}': {reason}",
+                type='REPORT_ALERT'
+            )
+            
+            # Get all administrators
+            admin_group = Group.objects.get(name='Administrator')
+            admins = admin_group.user_set.all()
+            
+            # Create UserNotification for each admin with read=False
+            for admin in admins:
+                UserNotification.objects.create(
+                    user=admin,
+                    notification=notification,
+                    read=False
+                )
+        except Group.DoesNotExist:
+            # If Administrator group doesn't exist, just continue without creating notifications
+            pass
+        
+        return Response(
+            {'detail': 'Comentario reportado correctamente.'},
+            status=status.HTTP_201_CREATED
+        )
+
 
 @extend_schema_view(
     list=extend_schema(tags=["Categories"]),
@@ -564,3 +767,311 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Category.objects.all()
+
+
+@extend_schema_view(
+    list=extend_schema(tags=['Comment Reports']),
+    retrieve=extend_schema(tags=['Comment Reports']),
+    disable_comment=extend_schema(tags=['Comment Reports']),
+    restore_comment=extend_schema(tags=['Comment Reports']),
+)
+class CommentReportViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for administrators to view reported comments.
+    Only administrators can access this endpoint.
+    """
+    serializer_class = ReportedCommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Get all comments that have been reported, with report counts.
+        Only accessible by administrators.
+        """
+        # Prevent error during schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return EventComment.objects.none()
+
+        user = self.request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden ver los comentarios reportados.")
+        
+        # Get comments that have at least one report
+        reported_comments = EventComment.objects.filter(
+            reports__isnull=False
+        ).annotate(
+            report_count=Count('reports', distinct=True),
+            latest_report_date=Max('reports__created_at')
+        ).distinct().order_by('-latest_report_date')
+        
+        return reported_comments
+
+    def list(self, request, *args, **kwargs):
+        """
+        List all reported comments with their reports.
+        """
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        
+        # Prepare data with reports
+        comments_data = []
+        for comment in (page if page is not None else queryset):
+            reports = CommentReport.objects.filter(comment=comment).select_related('reported_by')
+            comments_data.append({
+                'comment': comment,
+                'report_count': comment.report_count,
+                'latest_report_date': comment.latest_report_date,
+                'reports': reports
+            })
+        
+        serializer = self.get_serializer(comments_data, many=True)
+        
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='disable')
+    def disable_comment(self, request, pk=None):
+        """
+        Disable a reported comment.
+        Only administrators can disable comments.
+        """
+        user = request.user 
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden inhabilitar comentarios.")
+        
+        try:
+            comment = EventComment.objects.get(pk=pk)
+        except EventComment.DoesNotExist:
+            raise NotFound({'detail': 'Comentario no encontrado.'})
+
+        if not comment.is_active:
+            return Response(
+                {'detail': 'El comentario ya está inhabilitado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment.is_active = False
+        comment.disabled_at = timezone.now()
+        comment.disabled_by = user
+        comment.save()
+
+        return Response(
+            {'detail': 'Comentario inhabilitado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore_comment(self, request, pk=None):
+        """
+        Restore a disabled comment.
+        Only administrators can restore comments.
+        """
+        user = request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden restaurar comentarios.")
+
+        try:
+            comment = EventComment.objects.get(pk=pk)
+        except EventComment.DoesNotExist:
+            raise NotFound({'detail': 'Comentario no encontrado.'})
+
+        if comment.is_active:
+            return Response(
+                {'detail': 'El comentario ya está activo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment.is_active = True
+        comment.disabled_at = None
+        comment.disabled_by = None
+        comment.save()
+
+        return Response(
+            {'detail': 'Comentario restaurado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a specific reported comment with its reports.
+        """
+        comment = self.get_object()
+        
+        reports = CommentReport.objects.filter(comment=comment).select_related('reported_by')
+        comment_data = {
+            'comment': comment,
+            'report_count': comment.report_count,
+            'latest_report_date': comment.latest_report_date,
+            'reports': reports
+        }
+        
+        serializer = self.get_serializer(comment_data)
+        return Response(serializer.data)
+
+
+@extend_schema_view(
+    list=extend_schema(tags=['Event Reports']),
+)
+class EventReportViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for administrators to view reported events.
+    Only administrators can access this endpoint.
+    """
+    serializer_class = ReportedEventSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Get all events that have been reported, with report counts.
+        Only accessible by administrators.
+        """
+        # Prevent error during schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return Event.objects.none()
+
+        user = self.request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden ver los eventos reportados.")
+        
+        # Get events that have at least one report
+        reported_events = Event.objects.filter(
+            reports__isnull=False,
+        ).annotate(
+            report_count=Count('reports', distinct=True),
+            latest_report_date=Max('reports__created_at')
+        ).distinct().order_by('-latest_report_date')
+        
+        return reported_events
+
+    def list(self, request, *args, **kwargs):
+        """
+        List all reported events with their reports.
+        """
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        
+        # Prepare data with reports
+        events_data = []
+        for event in (page if page is not None else queryset):
+            reports = EventReport.objects.filter(event=event).select_related('reported_by')
+            
+            # Annotate event with required fields
+            event_annotated = Event.objects.filter(pk=event.pk).annotate(
+                participants_count=Count('student_events', distinct=True),
+                is_enrolled=Value(False, output_field=BooleanField())
+            ).first()
+            
+            events_data.append({
+                'event': event_annotated,
+                'report_count': event.report_count,
+                'latest_report_date': event.latest_report_date,
+                'reports': reports
+            })
+        
+        serializer = self.get_serializer(events_data, many=True)
+        
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a specific reported event with its reports.
+        """
+        event = self.get_object()
+        
+        # Annotate event with required fields
+        event_annotated = Event.objects.filter(pk=event.pk).annotate(
+            participants_count=Count('student_events', distinct=True),
+            is_enrolled=Value(False, output_field=BooleanField())
+        ).first()
+        
+        reports = EventReport.objects.filter(event=event).select_related('reported_by')
+        event_data = {
+            'event': event_annotated,
+            'report_count': event.report_count,
+            'latest_report_date': event.latest_report_date,
+            'reports': reports
+        }
+        
+        serializer = self.get_serializer(event_data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='disable')
+    def disable_event(self, request, pk=None):
+        """
+        Disable a reported event.
+        Only administrators can disable events.
+        """
+        user = request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden inhabilitar eventos.")
+        
+        try:
+            event = Event.objects.get(pk=pk)
+        except Event.DoesNotExist:
+            raise NotFound({'detail': 'Evento no encontrado.'})
+
+        if not event.is_active:
+            return Response(
+                {'detail': 'El evento ya está inhabilitado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        event.is_active = False
+        event.disabled_at = timezone.now()
+        event.disabled_by = user
+        event.save()
+
+        return Response(
+            {'detail': 'Evento inhabilitado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore_event(self, request, pk=None):
+        """
+        Restore a disabled event.
+        Only administrators can restore events.
+        """
+        user = request.user
+        if not user.groups.filter(name='Administrator').exists():
+            raise PermissionDenied("Solo los administradores pueden restaurar eventos.")
+
+        try:
+            event = Event.objects.get(pk=pk)
+        except Event.DoesNotExist:
+            raise NotFound({'detail': 'Evento no encontrado.'})
+
+        if event.is_active:
+            return Response(
+                {'detail': 'El evento ya está activo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        event.is_active = True
+        event.disabled_at = None
+        event.disabled_by = None
+        event.save()
+
+        return Response(
+            {'detail': 'Evento restaurado correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+
+@extend_schema(tags=["Notifications"])
+class NotificationPreferenceViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet
+):
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = NotificationPreferenceSerializer
+
+    def get_object(self):
+        obj, _ = NotificationPreference.objects.get_or_create(user=self.request.user)
+        self.check_object_permissions(self.request, obj)
+        return obj

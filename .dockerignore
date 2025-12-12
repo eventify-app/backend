@@ -1,0 +1,10 @@
+.git
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+.env
+.env.*
+media/
+staticfiles/
+node_modules/

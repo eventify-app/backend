@@ -136,6 +136,7 @@ class UserSerializer(serializers.ModelSerializer):
     )
     phone = serializers.CharField(
         required=False,
+        allow_blank=True,
         allow_null=True,
         validators=[UniqueValidator(queryset=User.objects.all(), message="Este número de teléfono ya está en uso.")]
     )

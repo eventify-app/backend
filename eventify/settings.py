@@ -32,6 +32,15 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
+if not DEBUG:
+    MEDIA_ROOT = '/app/media'
+    MEDIA_URL = '/media/'
+
+    os.makedirs(MEDIA_ROOT, exist_ok=True)
+else:
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / "media"
+
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 
 
@@ -227,5 +236,3 @@ CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_TIMEZONE = 'America/Bogota'
 CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'False') == 'True'
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / "media"
